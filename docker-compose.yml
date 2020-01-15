@@ -1,0 +1,15 @@
+version: '2.3'
+
+services:
+  mindlogic-seg:
+    image: mindlogic-seg
+    runtime: nvidia
+    networks: ['mindlogic-network']
+    restart: always
+    ports:
+      - "6006:6006"
+    volumes:
+      - "/home/fashionteam/LIP_JPPNet/:/app/"
+      - "/home/fashionteam/NCAP/dataset_MVC/:/data/"
+      
+networks: {mindlogic-network: {}}
