@@ -61,7 +61,9 @@ def BasicBlock(nn.Module):
 		return self.activation(x+residual)
 
 """
-class for Spatial Transformer Network
+class for Spatial Transformer Network 
+
+TODO: change channels to be dependent on input channels
 """
 class STN(nn.Module):
 	# NEED to check channel number ==> output should be 3*@
@@ -98,63 +100,79 @@ class STN(nn.Module):
 		x = F.grid_sample(x, grid)
 		return x
 
-
+"""
+class for Feature Pyramid Networks
+"""
 class FTN(nn.Module):
 	def __init__(self, N, input_ch):
-        super(FTN, self).__init__()
-        self.N = N
+		super(FTN, self).__init__()
+		self.N = N
+		self.ret_list = []
+
 		# encoding layer
-        self.conv = []
-        for i in range(N):
-            # insert? append!
-            self.conv.append(BasicBlock(input_ch * (i+1))) 
+		self.conv = []
+		for i in range(N):
+			self.conv.append(BasicBlock(input_ch * (i+1))) 
 
 		#decoding layer
-        self.deconv = []
-        for i in range(N-1):
-            self.deconv.append(deconv(input_ch * (N - i), input_ch * (N - i - 1)))
+		self.deconv = []
+		for i in range(N-1):
+			self.deconv.append(deconv(input_ch * (N - i), input_ch * (N - i - 1)))
+		
+		self.upsample = nn.Upsampling(scale_factor=2, mode="nearest")
 
-    def forward(self, input):
-        ret = input
-        for i in self.N:
-            ret = self.conv[i](ret)
-        return ret
-    
-    def deconv_forward(self, input, i):
-        return self.deconv[i].forward(input)
+	 def forward(self, input):
+		ret = input
+		for i in self.N:
+			ret = self.conv[i](ret)
+			self.ret_list.append(ret)	
+		return ret
+
+	"""
+	TODO: need to change concat to add
+	"""
+	 def deconv_forward(self, input, i):
+		_deconv = self.deconv[i].forward(input)
+		_conv = torch.cat(self.upsample(self.ret_list[0]), self.ret_list[1])
+		return torch.cat(_deconv, _conv)
+	
 
 class FlowNet(nn.Module):
 	def __init__(self, N, input_ch):
-        self.N = N
+		self.N = N
 
-        self.SourceFTN = FTN(N, input_ch)
-        self.TargetFTN = FTN(N, input_ch)
+		self.SourceFTN = FTN(N, input_ch)
+		self.TargetFTN = FTN(N, input_ch)
 
 		# E layer
-        self.E = []
-        for i in range(N):
-            self.E.append(deconv(input_cv * (N - i), input_cv * (N - i -1)))
+		self.E = []
+		for i in range(N):
+			self.E.append(deconv(input_ch*(N - i)*2, input_ch*(N - i -1)*2))
 
-        self.upsample = []
-        for i in range(N):
-            self.upsample.append(nn.Upsample(scale_factor=4, mode='nearest'))
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
 	def forward(self, src, tar):
 		"""
 		predict warping image by putting into predict_flow
 		"""
 
-
 		#input source,target image
 		src_conv = self.SourceFTN(src)
-        tar_conv = self.TargetFTN(tar)
+      tar_conv = self.TargetFTN(tar)
 
+		"""
+		TODO: change code
+				E => predict_flow 사용
+		"""
 		#concat for E4 to E1
-        F = self.E(torch.cat((src_conv, tar_conv), 1))
-        for i in range(self.N):
-            src_conv = self.SourceFTN.deconv_forward(src_conv, i)
-            tar_conv = self.TargetFTN.deconv_forward(tar_conv, i)
-            warp = STN(torch.cat(src_conv, self.upsample[i](F))) # concat?
-            concat = torch.cat(warp, tar_conv), 1)
-            F = self.upsample[i](F) + self.E(concat)
+      for i in range(self.N):
+			if (i==0):
+				F = self.E[i](torch.cat((src_conv, tar_conv), 1))
+			else:
+				F = self.upsample(F).add(self.E[i+1](concat))
+			src_conv = self.SourceFTN.deconv_forward(src_conv, i)
+			tar_conv = self.TargetFTN.deconv_forward(tar_conv, i)
+			warp = STN(torch.cat(src_conv, self.upsample(F))) # concat?
+			concat = torch.cat(warp, tar_conv), 1)
+		
 
