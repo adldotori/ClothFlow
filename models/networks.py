@@ -47,7 +47,7 @@ def BasicBlock(nn.Module):
 			raise NotImplementedError()
 
 		self.conv_block1 = conv(c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
-		self.conv_block2 = conv(c_num, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
+		self.conv_block2 = conv(c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
 
 		if activation = "leaky":
 			self.activation = nn.LeakyReLU(0.1, inplace=True)
@@ -60,13 +60,54 @@ def BasicBlock(nn.Module):
 		x = self.conv_block2(x)
 		return self.activation(x+residual)
 
+"""
+class for Spatial Transformer Network
+"""
+class STN(nn.Module):
+	# NEED to check channel number ==> output should be 3*@
+	def __init__(self, input_ch, h, w):
+		super(STN, self).__init__()
+		# localization network
+		self.localization = nn.Sequential(
+			conv(input_ch, 8, 1, kernel_size=7),
+			nn.MaxPool2d(2, stride=2),
+			nn.ReLU(True),
+			conv(8, 10, kernel_size=5),
+			nn.MaxPool2d(2, stride=2),
+			nn.ReLU(True)
+		)
+
+		# Regressor for the 3*2 affine matrix
+		self.fc_loc = nn.Sequential(
+			nn.Linear(10*3*3, 32),
+			nn.ReLU(True),
+			nn.Linear(32, 3*2)
+		)
+
+		#Initialize the weights/bias with identity transformation
+		self.fc_loc[2].weight.data.zero_()
+		self.fc_loc[2].bias.data.copy_(torch.tensor[1, 0, 0, 0, 1, 0], dtype=torch.float)
+
+	def forward(self, x):
+		x = self.localization(x.view(28, 28))) #resize x to (28, 28)
+		x = x.view(-1, 10*3*3)
+		theta = self.fc_loc(x)
+		theta = theta.view(-1, 2, 3) # matrix for transformation
+
+		grid = F.affine_grid(theta, x.size())
+		x = F.grid_sample(x, grid)
+		return x
+
+
 class FTN(nn.Module):
 	def __init__(self, N, input_ch):
+        super(FTN, self).__init__()
         self.N = N
 		# encoding layer
         self.conv = []
         for i in range(N):
-            self.conv.insert(0, BasicBlock(input_ch * (i+1)))
+            # insert? append!
+            self.conv.append(BasicBlock(input_ch * (i+1))) 
 
 		#decoding layer
         self.deconv = []
@@ -76,7 +117,7 @@ class FTN(nn.Module):
     def forward(self, input):
         ret = input
         for i in self.N:
-            ret = self.conv[i].forward(ret)
+            ret = self.conv[i](ret)
         return ret
     
     def deconv_forward(self, input, i):
@@ -86,7 +127,7 @@ class FlowNet(nn.Module):
 	def __init__(self, N, input_ch):
         self.N = N
 
-		self.SourceFTN = FTN(N, input_ch)
+        self.SourceFTN = FTN(N, input_ch)
         self.TargetFTN = FTN(N, input_ch)
 
 		# E layer
@@ -105,15 +146,15 @@ class FlowNet(nn.Module):
 
 
 		#input source,target image
-		src_conv = self.SourceFTN.forward(src)
-        tar_conv = self.TargetFTN.forward(tar)
+		src_conv = self.SourceFTN(src)
+        tar_conv = self.TargetFTN(tar)
 
 		#concat for E4 to E1
-        F = self.E.forward(torch.cat((src_conv, tar_conv), 1))
+        F = self.E(torch.cat((src_conv, tar_conv), 1))
         for i in range(self.N):
             src_conv = self.SourceFTN.deconv_forward(src_conv, i)
             tar_conv = self.TargetFTN.deconv_forward(tar_conv, i)
-            warp = WarpBlock.forward(src_conv, self.upsample[i].forward(F))
+            warp = STN(torch.cat(src_conv, self.upsample[i](F))) # concat?
             concat = torch.cat(warp, tar_conv), 1)
-            F = self.upsample[i].forward(F) + self.E.forward(concat)
+            F = self.upsample[i](F) + self.E(concat)
 
