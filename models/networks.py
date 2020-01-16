@@ -60,48 +60,60 @@ def BasicBlock(nn.Module):
 		x = self.conv_block2(x)
 		return self.activation(x+residual)
 
-class FlowNet(nn.Module):
-	def __init__(self, input_ch):
+class FTN(nn.Module):
+	def __init__(self, N, input_ch):
+        self.N = N
 		# encoding layer
-		self.conv1 = BasicBlock(input_ch)
-		self.conv2 = BasicBlock(input_ch*2)
-		self.conv3 = BasicBlock(input_ch*3)
-		self.conv4 = BasicBlock(input_ch*4)
-		self.conv5 = BasicBlock(input_ch*5)
+        self.conv = []
+        for i in range(N):
+            self.conv.insert(0, BasicBlock(input_ch * (i+1)))
 
 		#decoding layer
-		self.deconv4 = deconv(input_ch*5, input_ch*4)
-		self.deconv3 = deconv(input_ch*4, input_ch*3)
-		self.deconv2 = deconv(input_ch*3, input_ch*2)
-		self.deconv1 = deconv(input_ch*2, input_ch)
+        self.deconv = []
+        for i in range(N-1):
+            self.deconv.append(deconv(input_ch * (N - i), input_ch * (N - i - 1)))
 
-		# encoding layer for F
-		self.f5 = deconv(input_ch*10, input_ch*8)
-		self.f4 = deconv(input_ch*8, input_ch*6)
-		self.f3 = deconv(input_ch*6, input_ch*4)
-		self.f2 = deconv(input_ch*4, input_ch*2)
+    def forward(self, input):
+        ret = input
+        for i in self.N:
+            ret = self.conv[i].forward(ret)
+        return ret
+    
+    def deconv_forward(self, input, i):
+        return self.deconv[i].forward(input)
+
+class FlowNet(nn.Module):
+	def __init__(self, N, input_ch):
+        self.N = N
+
+		self.SourceFTN = FTN(N, input_ch)
+        self.TargetFTN = FTN(N, input_ch)
+
+		# E layer
+        self.E = []
+        for i in range(N):
+            self.E.append(deconv(input_cv * (N - i), input_cv * (N - i -1)))
+
+        self.upsample = []
+        for i in range(N):
+            self.upsample.append(nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=True))
 
 	def forward(self, src, tar):
 		"""
 		predict warping image by putting into predict_flow
 		"""
 
-		#input source image
-		src_conv1 = self.conv1.forward(src)
-		src_conv2 = self.conv2.forward(src_conv1)
-		src_conv3 = self.conv3.forward(src_conv2)
-		src_conv4 = self.conv4.forward(src_conv3)
-		src_conv5 = self.conv5.forward(src_conv4)
 
-		#input target image
-		tar_conv1 = self.conv1.forward(tar)
-		tar_conv2 = self.conv2.forward(tar_conv1)
-		tar_conv3 = self.conv3.forward(tar_conv2)
-		tar_conv4 = self.conv4.forward(tar_conv3)
-		tar_conv5 = self.conv5.forward(tar_conv4)
+		#input source,target image
+		src_conv = self.SourceFTN.forward(src)
+        tar_conv = self.TargetFTN.forward(tar)
 
 		#concat for E4 to E1
-		E4 = torch.cat((src_conv5, tar_conv5), 1)
-		output_f4 = self.f4(E4)
-		
-		flow4 = self.predict_flow4()
+        F = self.E.forward(torch.cat((src_conv, tar_conv), 1))
+        for i in range(self.N):
+            src_conv = self.SourceFTN.deconv_forward(src_conv, i)
+            tar_conv = self.TargetFTN.deconv_forward(tar_conv, i)
+            warp = WarpBlock.forward(src_conv, self.upsample[i].forward(F))
+            concat = torch.cat(warp, tar_conv), 1)
+            F = self.upsample[i].forward(F) + self.E.forward(concat)
+
