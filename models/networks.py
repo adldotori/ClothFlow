@@ -96,7 +96,7 @@ class FlowNet(nn.Module):
 
         self.upsample = []
         for i in range(N):
-            self.upsample.append(nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=True))
+            self.upsample.append(nn.Upsample(scale_factor=4, mode='nearest'))
 
 	def forward(self, src, tar):
 		"""
