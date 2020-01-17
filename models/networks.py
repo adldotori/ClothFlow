@@ -1,4 +1,7 @@
-
+import torch
+import torch.nn as nn
+from torchvision import models
+from loss import *
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -139,6 +142,15 @@ class FlowNet(nn.Module):
         for i in range(N):
             self.upsample.append(nn.Upsample(scale_factor=4, mode='nearest'))
 
+		self.lambda_struct = 10
+		self.lambda_smt = 2
+
+	def set_input(self, inputs):
+        self.c_cloth = inputs["c_cloth"].cuda()
+        self.t_cloth = inputs["t_cloth"].cuda()
+        self.c_seg = inputs["c_seg"].cuda()
+        self.t_seg = inputs["t_seg"].cuda()
+
 	def forward(self, src, tar):
 		"""
 		predict warping image by putting into predict_flow
@@ -158,3 +170,24 @@ class FlowNet(nn.Module):
             concat = torch.cat(warp, tar_conv), 1)
             F = self.upsample[i](F) + self.E(concat)
 
+	def backward(self):
+		self.loss_roi_perc = loss_roi_perc(self.c_seg, self.c_cloth, self.t_seg, self.t_cloth)
+		self.loss_struct = loss_struct(self.s_seg, self.t_seg) 
+		self.loss_smt = 0
+		for i in self.N:
+			self.loss_smt += loss_smt(self.F[i])
+
+		self.loss_total =  self.loss_roi_perc+ self.lambda_struct * self.loss_struct+ 
+			self.lambda_smt * self.loss_smt
+
+		loss_total.backward()
+
+    def loss_struct(self, src, tar):
+        return nn.L1loss(src, tar)
+
+    def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
+		return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
+
+    def loss_smt(self, mat):
+        return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+               torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
