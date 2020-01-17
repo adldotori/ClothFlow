@@ -1,13 +1,15 @@
-
+from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
 
 from torch.autograd import Variable
-
 from torchvision import models
+
 from loss import *
+
 
 """
 Two feature pyramid networks - source FPN, target FPN
@@ -67,8 +69,12 @@ class BasicBlock(nn.Module):
 		else:
 			raise NotImplementedError()
 
-		self.conv_block1 = conv(c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
-		self.conv_block2 = conv(c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
+		if (c_num == 3 or c_num == 1):
+			self.conv_block1 = conv(c_num, 32, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(32, 32, 1, bias=use_bias, norm_layer=norm_layer)
+		else:
+			self.conv_block1 = conv(c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
 
 		if activation == "leaky":
 			self.activation = nn.LeakyReLU(0.1, inplace=True)
@@ -101,9 +107,9 @@ class STN(nn.Module):
 		)
 
 		# Regressor for the 3*2 affine matrix
-		self.fc_loc = NULL 
+		self.fc_loc = None 
 
-	def fc_loc(self, input):
+	def _fc_loc(self, input):
 		return nn.Sequential(
 			nn.Linear(input, 32),
 			nn.ReLU(True),
@@ -111,17 +117,17 @@ class STN(nn.Module):
 			)
 
 	def forward(self, x):
-		x = self.localization(x) 
-		x_shape = x.shape
-		x = x.view(-1, 10 * x_shape[-1] * x_shape[-2])
+		_x = self.localization(x) 
+		_x_shape = _x.shape
+		_x = _x.view(-1, 10 * _x_shape[-1] * _x_shape[-2])
 
-		if (self.fc_loc == NULL):
-			self.fc_loc = fc_loc(10 * x_shape[-1] * x_shape[-2]) 
+		if (self.fc_loc == None):
+			self.fc_loc = self._fc_loc(10 * _x_shape[-1] * _x_shape[-2]) 
 			#Initialize the weights/bias with identity transformation
 			self.fc_loc[2].weight.data.zero_()
-			self.fc_loc[2].bias.data.copy_(torch.tensor[1, 0, 0, 0, 1, 0], dtype=torch.float)
+			self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
 
-		theta = self.fc_loc(x)
+		theta = self.fc_loc(_x)
 		theta = theta.view(-1, 2, 3) # matrix for transformation
 
 		grid = F.affine_grid(theta, x.size())
@@ -173,13 +179,16 @@ class FPN(nn.Module):
 TODO: max channel should be 256 - ok
 """
 class FlowNet(nn.Module):
-	def __init__(self, N, input_ch, h, w):
+	def __init__(self, N, input_ch = 3):
 		self.N = N
 
 		# define channel list
 		self.ch = []
 		for i in range(N):
-			self.ch.append(min(input_ch*(i+1), 256))
+			if (i==0): 
+				self.ch.append(input_ch)
+			else:
+				self.ch.append(min(2**(i+4), 256)) # start with 32
 
 		self.SourceFPN = FPN(N, self.ch)
 		self.TargetFPN = FPN(N, self.ch)
@@ -199,10 +208,10 @@ class FlowNet(nn.Module):
 		self.lambda_smt = 2
 
 	def set_input(self, inputs):
-                self.c_cloth = inputs["c_cloth"].cuda()
-                self.t_cloth = inputs["t_cloth"].cuda()
-                self.c_seg = inputs["c_seg"].cuda()
-                self.t_seg = inputs["t_seg"].cuda()
+		self.c_cloth = inputs["c_cloth"].cuda()
+		self.t_cloth = inputs["t_cloth"].cuda()
+		self.c_seg = inputs["c_seg"].cuda()
+		self.t_seg = inputs["t_seg"].cuda()
 
 	def forward(self, src, tar):
 		#input source,target image
@@ -217,13 +226,13 @@ class FlowNet(nn.Module):
 		"""
 		#concat for E4 to E1
 
-                self.F = []
+		self.F = []
 		self.F.append(self.E[0](torch.cat([src_conv, tar_conv], 1))) #[W, H, 2]
 		for i in range(self.N - 1):
 			src_conv = self.SourceFPN.deconv_forward(src_conv, i) #[2W, 2H, C]
 			tar_conv = self.TargetFPN.deconv_forward(tar_conv, i) #[2W, 2H, C]
-			upsample_F = self.upsample(self.F[i])
-			warp = self.stn[i](torch.cat([src_conv, upsample_F], 1)) #concat?
+			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
+			warp = self.stn[i](torch.cat([src_conv, upsample_F], 1)) #concat? 
 			concat = torch.cat([warp, tar_conv], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 		return self.F
@@ -235,27 +244,31 @@ class FlowNet(nn.Module):
 		for i in self.N:
 			self.loss_smt += loss_smt(self.F[i])
 
-		self.loss_total =  self.loss_roi_perc+ self.lambda_struct * self.loss_struct+ 
-			self.lambda_smt * self.loss_smt
+		self.loss_total =  self.loss_roi_perc+ self.lambda_struct * self.loss_struct + self.lambda_smt * self.loss_smt
 
 		loss_total.backward()
 
-    def loss_struct(self, src, tar):
-        return nn.L1loss(src, tar)
+		def loss_struct(self, src, tar):
+		  return nn.L1loss(src, tar)
 
-    def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
-		return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
+		def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
+			return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
 
-    def loss_smt(self, mat):
-        return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-               torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
+		def loss_smt(self, mat):
+		  return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+					torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
 
-"""
 def test_FPN():
 	return FPN(4, [3, 6, 12, 24])
 
+def test_STN():
+	return STN(3)
+
 def test():
-	net = test_FPN()
-	fms = net(Variable(torch.randn(1, 3, 1024, 1024)))
+	# net = test_FPN()
+	net = test_STN()
+	fms = net(Variable(torch.randn(1, 3, 512, 1024)))
 	print(fms.shape)
-"""
+
+if __name__ == "__main__":
+	test()
