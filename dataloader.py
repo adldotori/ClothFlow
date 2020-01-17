@@ -11,12 +11,16 @@ import numpy as np
 import json
 import pickle
 
-def naming(pair,position):
-    return pair + "-" + position + "-4x.jpg"
+#import time
 
-class ClothDataset(data.Dataset):
+def naming(pair,position):
+    return pair + "-" + position + "-4x_resize.jpg"
+
+class CPDataset(data.Dataset):
+    """Dataset for CP-VTON.
+    """
     def __init__(self, opt):
-        super(ClothDataset, self).__init__()
+        super(CPDataset, self).__init__()
         # base setting
         self.opt = opt
         self.root = opt.dataroot
@@ -28,6 +32,7 @@ class ClothDataset(data.Dataset):
         self.radius = opt.radius
         self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         self.result_dir = opt.result_dir
         
         # load data list
@@ -57,8 +62,8 @@ class ClothDataset(data.Dataset):
 
         # cloth image & cloth mask
 
-        path_cloth = osp.join(self.data_path,pair, "p","crop.png")
-        path_mask = osp.join(self.data_path, pair, "p","mask.png")
+        path_cloth = osp.join(self.data_path,pair,"crop.png")
+        path_mask = osp.join(self.data_path, pair,"mask.png")
         cloth = Image.open(path_cloth)
         cloth_mask = Image.open(path_mask)
 
@@ -93,18 +98,18 @@ class ClothDataset(data.Dataset):
         t_image = self.transform(t_image)
 
         # conditionnal parsing and pose path
-        path_c_seg = osp.join(self.data_path, pair, c_name, "segment.png")
-        path_c_pose = osp.join(self.data_path, pair, c_name, "pose.pkl")
+        path_c_seg = osp.join(self.data_path, pair, c_name, "segment_resize.jpg")
+        path_c_pose = osp.join(self.data_path, pair, c_name, "pose_resize.pkl")
 
         #target parsing and pose path
         t_name = t_name
-        path_t_seg = osp.join(self.data_path, pair, t_name,  "segment.png")
-        path_t_pose = osp.join(self.data_path, pair, t_name, "pose.pkl")
+        path_t_seg = osp.join(self.data_path, pair, t_name,  "segment_resize.jpg")
+        path_t_pose = osp.join(self.data_path, pair, t_name, "pose_resize.pkl")
 
         # conditional segment processing
         c_seg = Image.open(path_c_seg)
         c_parse_array = np.array(c_seg)
-        # print(pair, c_parse_array.shape)
+
         c_parse_fla = c_parse_array.reshape(H*W, 1)
         c_parse_fla = torch.from_numpy(c_parse_fla).long()
         c_parse = torch.zeros(H*W, 20).scatter_(1, c_parse_fla, 1)
@@ -136,11 +141,11 @@ class ClothDataset(data.Dataset):
         c_cloth_sample = Image.fromarray((c_cloth*255).astype(np.uint8)) # downsampling of cloth on the person
         c_cloth_sample = c_cloth_sample.resize((self.fine_width//4, self.fine_height//4), Image.BILINEAR)
         c_cloth_sample = c_cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        c_shape_sample = self.transform(c_shape_sample)
+        c_shape_sample = self.transform_1ch(c_shape_sample)
 
         c_head = torch.from_numpy(c_head)
         c_cloth = torch.from_numpy(c_cloth)
-        c_cloth_sample = self.transform(c_cloth_sample)
+        c_cloth_sample = self.transform_1ch(c_cloth_sample)
         #c_cloth_sample = self.transform(c_cloth_sample)
 
         t_seg = Image.open(path_t_seg)
@@ -171,10 +176,10 @@ class ClothDataset(data.Dataset):
 
 
         t_shape_mask = Image.fromarray((t_shape_mask * 255).astype(np.uint8))
-        t_shape = self.transform(t_shape_mask)
+        t_shape = self.transform_1ch(t_shape_mask)
         t_shape_mask = t_shape_mask.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
         t_shape_mask = t_shape_mask.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        t_shape_mask = self.transform(t_shape_mask)
+        t_shape_mask = self.transform_1ch(t_shape_mask)
         t_head_mask = torch.from_numpy(t_head_mask)
         t_cloth = torch.from_numpy(t_cloth_mask)
         con_head = c_image * c_head - (1 - c_head)
@@ -193,6 +198,7 @@ class ClothDataset(data.Dataset):
                     c_pose_data[i, :] = pose_label['candidate'][int(pose_label['subset'][0, i]), :2]
             c_pose_data = np.asarray(c_pose_data)
         """
+        #start_time = time.time()
         ###
         with open(path_c_pose, 'rb') as f:
             pose_label = pickle.load(f)
@@ -219,7 +225,7 @@ class ClothDataset(data.Dataset):
             if c_pointx > 1 and c_pointy > 1:
                 draw.rectangle((c_pointx - r, c_pointy - r, c_pointx + r, c_pointy + r), 'white', 'white')
                 c_pose_draw.rectangle((c_pointx - r, c_pointy - r, c_pointx + r, c_pointy + r), 'white', 'white')
-            one_map = self.transform(one_map)
+            one_map = self.transform_1ch(one_map)
             c_pose_map[i] = one_map[0]
 
         """
@@ -256,15 +262,16 @@ class ClothDataset(data.Dataset):
             if t_pointx > 1 and t_pointy > 1:
                 draw.rectangle((t_pointx - r, t_pointy - r, t_pointx + r, t_pointy + r), 'white', 'white')
                 t_pose_draw.rectangle((t_pointx - r, t_pointy - r, t_pointx + r, t_pointy + r), 'white', 'white')
-            one_map = self.transform(one_map)
+            one_map = self.transform_1ch(one_map)
             t_pose_map[i] = one_map[0]
 
+        #print(time.time()-start_time)
         # just for visualization
-        c_v_pose = self.transform(c_pose)
-        t_v_pose = self.transform(t_pose)
+        c_v_pose = self.transform_1ch(c_pose)
+        t_v_pose = self.transform_1ch(t_pose)
 
         # cloth-agnostic representation
-        c_shape = self.transform(c_shape)
+        c_shape = self.transform_1ch(c_shape)
         agnostic = torch.cat([c_shape, t_pose_map], 0)
         agnostic_sample = torch.cat([c_shape_sample, t_pose_map], 0)
 
@@ -354,9 +361,9 @@ class ClothDataset(data.Dataset):
     def __len__(self):
         return len(self.pairs)
 
-class ClothDataLoader(object):
+class CPDataLoader(object):
     def __init__(self, opt, dataset):
-        super(ClothDataLoader, self).__init__()
+        super(CPDataLoader, self).__init__()
 
         if opt.shuffle :
             train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
@@ -384,20 +391,20 @@ if __name__ == "__main__":
     
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default = "100_up")
+    parser.add_argument("--dataroot", default = "/home/fashionteam/NCAP/dataset_MVC_up")
     parser.add_argument("--datamode", default = "")
-    parser.add_argument("--stage", default = "GMM")
-    parser.add_argument("--data_list", default = "train_pairs.txt")
-    parser.add_argument("--fine_width", type=int, default = 1920)
-    parser.add_argument("--fine_height", type=int, default = 2560)
-    parser.add_argument("--radius", type=int, default = 3)
+    parser.add_argument("--stage", default = "PGP")
+    parser.add_argument("--data_list", default = "/home/fashionteam/NCAP/stage1/MVCup_pair.txt")
+    parser.add_argument("--fine_width", type=int, default = 1024)
+    parser.add_argument("--fine_height", type=int, default = 1024)
+    parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument('-b', '--batch-size', type=int, default=4)
     parser.add_argument('-j', '--workers', type=int, default=1)
     
     opt = parser.parse_args()
-    dataset = ClothDataset(opt)
-    data_loader = ClothDataLoader(opt, dataset)
+    dataset = CPDataset(opt)
+    data_loader = CPDataLoader(opt, dataset)
 
     print('Size of the dataset: %05d, dataloader: %04d' \
             % (len(dataset), len(data_loader.data_loader)))
