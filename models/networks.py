@@ -184,23 +184,24 @@ class FlowNet(nn.Module):
 
 		# define channel list
 		self.ch = []
+		
 		for i in range(N):
 			if (i==0): 
 				self.ch.append(input_ch)
 			else:
 				self.ch.append(min(2**(i+4), 256)) # start with 32
 
-		self.SourceFPN = FPN(N, self.ch)
-		self.TargetFPN = FPN(N, self.ch)
+		self.SourceFPN = FPN(self.N, self.ch)
+		self.TargetFPN = FPN(self.N, self.ch)
 
 		# list for Warp - left to right
 		self.stn = []
-		for i in range(N-1):
+		for i in range(self.N):
 			self.stn.append(STN(self.ch[-2-i]))
 
 		# E layer - left to right
 		self.E = []
-		for i in range(N):
+		for i in range(self.N):
 			# multiple by 2 due to concat (Sn, Tn)
 			self.E.append(predict_flow(self.ch[-1-i] * 2))
 
@@ -235,7 +236,9 @@ class FlowNet(nn.Module):
 			warp = self.stn[i](torch.cat([src_conv, upsample_F], 1)) #concat? 
 			concat = torch.cat([warp, tar_conv], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
-		return self.F
+
+		last_F = self.upsample(self.F[-1])
+		self.result = self.stn[-1](src)
 
 	def backward(self):
 		self.loss_roi_perc = loss_roi_perc(self.c_seg, self.c_cloth, self.t_seg, self.t_cloth)
