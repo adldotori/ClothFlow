@@ -1,4 +1,7 @@
-
+import torch
+import torch.nn as nn
+from torchvision import models
+from loss import *
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -184,26 +187,57 @@ class FlowNet(nn.Module):
 			# multiple by 2 due to concat (Sn, Tn)
 			self.E.append(predict_flow(self.ch[-1-i] * 2))
 
-		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+		self.lambda_struct = 10
+		self.lambda_smt = 2
+
+	def set_input(self, inputs):
+        self.c_cloth = inputs["c_cloth"].cuda()
+        self.t_cloth = inputs["t_cloth"].cuda()
+        self.c_seg = inputs["c_seg"].cuda()
+        self.t_seg = inputs["t_seg"].cuda()
 
 	def forward(self, src, tar):
 		#input source,target image
 		src_conv = self.SourceFTN(src) #[W, H, C]
-      tar_conv = self.TargetFTN(tar) #[W, H, C]
+        tar_conv = self.TargetFTN(tar) #[W, H, C]
+
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
 		"""
 		TODO: change code
 				E => predict_flow 사용 - ok
 		"""
 		#concat for E4 to E1
-		F = self.E[0](torch.cat([src_conv, tar_conv], 1)) #[W, H, 2]
-      for i in range(self.N - 1):
+		self.F = []
+		self.F.append(self.E[0](torch.cat([src_conv, tar_conv], 1))) #[W, H, 2]
+        for i in range(self.N - 1):
 			src_conv = self.SourceFTN.deconv_forward(src_conv, i) #[2W, 2H, C]
 			tar_conv = self.TargetFTN.deconv_forward(tar_conv, i) #[2W, 2H, C]
-			upsample_F = self.upsample(F)
+			upsample_F = self.upsample(self.F[i])
 			warp = self.stn[i](torch.cat([src_conv, upsample_F], 1)) #concat?
 			concat = torch.cat([warp, tar_conv], 1)
-			F = upsample_F.add(self.E[i+1](concat))
-		return F
-		
+			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
+		return self.F
+
+	def backward(self):
+		self.loss_roi_perc = loss_roi_perc(self.c_seg, self.c_cloth, self.t_seg, self.t_cloth)
+		self.loss_struct = loss_struct(self.s_seg, self.t_seg) 
+		self.loss_smt = 0
+		for i in self.N:
+			self.loss_smt += loss_smt(self.F[i])
+
+		self.loss_total =  self.loss_roi_perc+ self.lambda_struct * self.loss_struct+ 
+			self.lambda_smt * self.loss_smt
+
+		loss_total.backward()
+
+    def loss_struct(self, src, tar):
+        return nn.L1loss(src, tar)
+
+    def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
+		return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
+
+    def loss_smt(self, mat):
+        return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+               torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
