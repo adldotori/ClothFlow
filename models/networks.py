@@ -8,7 +8,7 @@ import numpy as np
 from torch.autograd import Variable
 from torchvision import models
 
-from loss import *
+from models.loss import *
 
 
 """
@@ -180,12 +180,13 @@ TODO: max channel should be 256 - ok
 """
 class FlowNet(nn.Module):
 	def __init__(self, N, input_ch = 3):
+		super(FlowNet, self).__init__()
 		self.N = N
 
 		# define channel list
 		self.ch = []
 		
-		for i in range(N):
+		for i in range(self.N):
 			if (i==0): 
 				self.ch.append(input_ch)
 			else:
@@ -197,25 +198,23 @@ class FlowNet(nn.Module):
 		# list for Warp - left to right
 		self.stn = []
 		for i in range(self.N):
+			# TODO: i=0일 때 -로 들어감
 			self.stn.append(STN(self.ch[-2-i]))
 
 		# E layer - left to right
 		self.E = []
 		for i in range(self.N):
+			# TODO: i=0일 때 -로 들어감
 			# multiple by 2 due to concat (Sn, Tn)
 			self.E.append(predict_flow(self.ch[-1-i] * 2))
 
 		self.lambda_struct = 10
 		self.lambda_smt = 2
 
-	def set_input(self, inputs):
-		self.c_cloth = inputs["c_cloth"].cuda()
-		self.t_cloth = inputs["t_cloth"].cuda()
-		self.c_seg = inputs["c_seg"].cuda()
-		self.t_seg = inputs["t_seg"].cuda()
-
 	def forward(self, src, tar):
 		#input source,target image
+
+		#  TODO: src, tar parse
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
@@ -238,11 +237,13 @@ class FlowNet(nn.Module):
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
 		last_F = self.upsample(self.F[-1])
-		self.result = self.stn[-1](src)
+		self.result = self.stn[-1](torch.cat([src, last_F], 1))
+		# TODO: result parse
+		return self.result
 
 	def backward(self):
-		self.loss_roi_perc = loss_roi_perc(self.c_seg, self.c_cloth, self.t_seg, self.t_cloth)
-		self.loss_struct = loss_struct(self.s_seg, self.t_seg) 
+		self.loss_roi_perc = loss_roi_perc(self.warp_seg, self.warp_cloth, self.t_seg, self.t_cloth)
+		self.loss_struct = loss_struct(self.warp_seg, self.t_seg) 
 		self.loss_smt = 0
 		for i in self.N:
 			self.loss_smt += loss_smt(self.F[i])
@@ -251,15 +252,15 @@ class FlowNet(nn.Module):
 
 		loss_total.backward()
 
-		def loss_struct(self, src, tar):
-		  return nn.L1loss(src, tar)
+	def loss_struct(self, src, tar):
+		return nn.L1loss(src, tar)
 
-		def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
-			return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
+	def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
+		return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
 
-		def loss_smt(self, mat):
-		  return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-					torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
+	def loss_smt(self, mat):
+		return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+				torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
 
 def test_FPN():
 	return FPN(4, [3, 6, 12, 24])

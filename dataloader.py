@@ -16,11 +16,9 @@ import pickle
 def naming(pair,position):
     return pair + "-" + position + "-4x_resize.jpg"
 
-class CPDataset(data.Dataset):
-    """Dataset for CP-VTON.
-    """
+class ClothDataset(data.Dataset):
     def __init__(self, opt):
-        super(CPDataset, self).__init__()
+        super(ClothDataset, self).__init__()
         # base setting
         self.opt = opt
         self.root = opt.dataroot
@@ -52,7 +50,7 @@ class CPDataset(data.Dataset):
         self.t_names = t_names
 
     def name(self):
-        return "CPDataset"
+        return "ClothDataset"
 
     def __getitem__(self, index):
 
@@ -361,9 +359,9 @@ class CPDataset(data.Dataset):
     def __len__(self):
         return len(self.pairs)
 
-class CPDataLoader(object):
+class ClothDataLoader(object):
     def __init__(self, opt, dataset):
-        super(CPDataLoader, self).__init__()
+        super(ClothDataLoader, self).__init__()
 
         if opt.shuffle :
             train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
@@ -394,7 +392,8 @@ if __name__ == "__main__":
     parser.add_argument("--dataroot", default = "/home/fashionteam/NCAP/dataset_MVC_up")
     parser.add_argument("--datamode", default = "")
     parser.add_argument("--stage", default = "PGP")
-    parser.add_argument("--data_list", default = "/home/fashionteam/NCAP/stage1/MVCup_pair.txt")
+    # parser.add_argument("--data_list", default = "/home/fashionteam/NCAP/stage1/MVCup_pair.txt")
+    parser.add_argument("--data_list", default = "/home/fashionteam/Taeho.txt")
     parser.add_argument("--fine_width", type=int, default = 1024)
     parser.add_argument("--fine_height", type=int, default = 1024)
     parser.add_argument("--radius", type=int, default = 5)
@@ -403,8 +402,8 @@ if __name__ == "__main__":
     parser.add_argument('-j', '--workers', type=int, default=1)
     
     opt = parser.parse_args()
-    dataset = CPDataset(opt)
-    data_loader = CPDataLoader(opt, dataset)
+    dataset = ClothDataset(opt)
+    data_loader = ClothDataLoader(opt, dataset)
 
     print('Size of the dataset: %05d, dataloader: %04d' \
             % (len(dataset), len(data_loader.data_loader)))
