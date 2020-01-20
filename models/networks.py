@@ -24,15 +24,15 @@ def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1
 		)
 	return model
 
-def deconv(in_channels, out_channels, activation = "relu"):
+def deconv(in_channels, out_channels, kernel_size=4, padding=1, activation = "relu"):
 	if activation == "leaky":
 		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=True),
+				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=padding, bias=True),
 				nn.LeakyReLU(0.1, inplace=True)
 				)
 	else:
 		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=True),
+				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=padding, bias=True),
 				nn.ReLU()
 				)
 
@@ -143,32 +143,37 @@ class FPN(nn.Module):
 		self.N = N
 		self.ret_list = []
 		self.ch = ch_list
+		print("self.ch: {}".format(self.ch))
 
 		# encoding layer - left to right
 		self.conv = []
 		for i in range(N):
 			self.conv.append(BasicBlock(self.ch[i])) 
+		
+		self.toplayer = deconv(self.ch[-1], 256, kernel_size=1, padding=0)
 
 		# decoding layer - left to right
 		self.deconv = []
-		for i in range(N-1):
-			self.deconv.append(deconv(self.ch[-1-i], self.ch[-2-i]))
-	 
+		for i in range(N-2):
+			self.deconv.append(deconv(self.ch[-2-i], 256, kernel_size=3, padding=1))
+
 		# upsampling layer - right to left
 		self.upsample = []
 		for i in range(N-1):
 			self.upsample.append(upconv(self.ch[N-1-i], self.ch[N-2-i]))
 
+	def _upsample_add(self, x, y):
+		_, _, H, W = y.size()
+		return F.upsample(x, size=(H, W), mode="bilinear") + y
+
 	def forward(self, input):
 		ret = input
 		for i in range(self.N):
 			ret = self.conv[i](ret)
+			print("shape of ret {} is {}".format(i, ret.shape))
 			self.ret_list.append(ret)	
 		return ret
 
-	"""
-	TODO: need to change concat to add - ok
-	"""
 	def deconv_forward(self, input, i):
 		ret_dec = self.deconv[i](input)
 		upsample = self.upsample[i](self.ret_list[self.n - i])
@@ -180,6 +185,7 @@ TODO: max channel should be 256 - ok
 """
 class FlowNet(nn.Module):
 	def __init__(self, N, input_ch = 3):
+		super(FlowNet, self).__init__()
 		self.N = N
 
 		# define channel list
@@ -196,7 +202,7 @@ class FlowNet(nn.Module):
 
 		# list for Warp - left to right
 		self.stn = []
-		for i in range(self.N):
+		for i in range(self.N-1):
 			self.stn.append(STN(self.ch[-2-i]))
 
 		# E layer - left to right
@@ -207,6 +213,7 @@ class FlowNet(nn.Module):
 
 		self.lambda_struct = 10
 		self.lambda_smt = 2
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
 	def set_input(self, inputs):
 		self.c_cloth = inputs["c_cloth"].cuda()
@@ -219,7 +226,6 @@ class FlowNet(nn.Module):
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
-		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
 		"""
 		TODO: change code
@@ -262,15 +268,20 @@ class FlowNet(nn.Module):
 					torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
 
 def test_FPN():
-	return FPN(4, [3, 6, 12, 24])
+	return FPN(4, [3, 32, 64, 128])
 
 def test_STN():
 	return STN(3)
 
+def test_FlowNet():
+	return FlowNet(4, 3)
+
 def test():
-	# net = test_FPN()
-	net = test_STN()
-	fms = net(Variable(torch.randn(1, 3, 512, 1024)))
+	net = test_FPN()
+	# net = test_STN()
+	# net = test_FlowNet()
+	fms = net(Variable(torch.randn(1, 3, 1024, 1024)))
+	# fms = net(Variable(torch.randn(1, 3, 1024, 1024), torch.randn(1, 3, 1024, 1024)))
 	print(fms.shape)
 
 if __name__ == "__main__":
