@@ -63,6 +63,7 @@ def train(opt, epoch):
         tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
 
         optimizer.zero_grad()
+        print(torch.cat([con_cloth, con_cloth_mask], 1).shape, tar_cloth_mask.shape)
         result = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
         # TODO : save result
         optimizer.zero_grad()
