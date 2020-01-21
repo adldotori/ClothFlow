@@ -46,8 +46,7 @@ def get_opt():
     return opt
 
 def train(opt, epoch):
-    # model = FlowNet(4).to(device)
-    model = conv(3,5,1)
+    model = FlowNet(4).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     train_dataset = ClothDataset(opt)
     train_loader = ClothDataLoader(opt, train_dataset)
@@ -62,6 +61,7 @@ def train(opt, epoch):
         # TODO : merge data in dataloader.py
         result = model(data)
         # TODO : save result
+        optimizer.zero_grad()
         model.backward()
         optimizer.step()
         result = model.current_results()
