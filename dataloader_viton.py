@@ -101,44 +101,44 @@ class CFDataset(data.Dataset):
                   (parse_array == 6).astype(np.float32) + \
                   (parse_array == 7).astype(np.float32)
 
-        arms = (parse_array == 15).astype(np.float32) + \
-                  (parse_array == 14).astype(np.float32)
+        # arms = (parse_array == 15).astype(np.float32) + \
+        #           (parse_array == 14).astype(np.float32)
         
-        pants = (parse_array == 9).astype(np.float32) + \
-                  (parse_array == 12).astype(np.float32) + \
-                  (parse_array == 16).astype(np.float32)
+        # pants = (parse_array == 9).astype(np.float32) + \
+        #           (parse_array == 12).astype(np.float32) + \
+        #           (parse_array == 16).astype(np.float32)
 
-        body_shape = shape
-        shape_array = np.asarray(body_shape)
-        body_fla = shape_array.reshape(H*W,1)
-        body_fla = torch.from_numpy(body_fla).long()
-        one_hot = torch.zeros(H*W, 2).scatter_(1, body_fla, 1)
-        one_hot = one_hot.view(H, W, 2)
-        one_hot = one_hot.transpose(2, 0).transpose(1, 2).contiguous() #[2,256,192]
+        # body_shape = shape
+        # shape_array = np.asarray(body_shape)
+        # body_fla = shape_array.reshape(H*W,1)
+        # body_fla = torch.from_numpy(body_fla).long()
+        # one_hot = torch.zeros(H*W, 2).scatter_(1, body_fla, 1)
+        # one_hot = one_hot.view(H, W, 2)
+        # one_hot = one_hot.transpose(2, 0).transpose(1, 2).contiguous() #[2,256,192]
 
-        shape = Image.fromarray((shape*255).astype(np.uint8))
-        shape_sample = shape.resize((self.fine_width//16, self.fine_height//16),Image.BILINEAR)
-        shape_sample = shape_sample.resize((self.fine_width, self.fine_height),Image.BILINEAR)
+        # shape = Image.fromarray((shape*255).astype(np.uint8))
+        # shape_sample = shape.resize((self.fine_width//16, self.fine_height//16),Image.BILINEAR)
+        # shape_sample = shape_sample.resize((self.fine_width, self.fine_height),Image.BILINEAR)
 
 
-        cloth_sample = Image.fromarray((cloth*255).astype(np.uint8)) # downsampling of cloth on the person
-        cloth_sample = cloth_sample.resize((self.fine_width//4, self.fine_height//4), Image.BILINEAR)
-        cloth_sample = cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        shape_sample = self.transform_1ch(shape_sample)
+        # cloth_sample = Image.fromarray((cloth*255).astype(np.uint8)) # downsampling of cloth on the person
+        # cloth_sample = cloth_sample.resize((self.fine_width//4, self.fine_height//4), Image.BILINEAR)
+        # cloth_sample = cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        # shape_sample = self.transform_1ch(shape_sample)
 
-        head = torch.from_numpy(head)
+        # head = torch.from_numpy(head)
         cloth = torch.from_numpy(cloth)
-        arms = torch.from_numpy(arms)
-        pants = torch.from_numpy(pants)
-        cloth_sample = self.transform_1ch(cloth_sample)
+        # arms = torch.from_numpy(arms)
+        # pants = torch.from_numpy(pants)
+        # cloth_sample = self.transform_1ch(cloth_sample)
         #c_cloth_sample = self.transform(c_cloth_sample)
 
         
-        crop_head = image * head - (1 - head)
+        # crop_head = image * head - (1 - head)
         crop_cloth = image * cloth + (1 - cloth)
-        off_cloth = image * (1-cloth) + cloth
-        crop_arms = image * arms + (1-arms)
-        crop_pants = image * pants + (1-pants)
+        # off_cloth = image * (1-cloth) + cloth
+        # crop_arms = image * arms + (1-arms)
+        # crop_pants = image * pants + (1-pants)
 
 
 
@@ -153,33 +153,33 @@ class CFDataset(data.Dataset):
         """
         #start_time = time.time()
         ###
-        with open(path_pose, 'rb') as f:
-            pose_label = pickle.load(f)
-        pose_data = pose_label
-        ###
+        # with open(path_pose, 'rb') as f:
+        #     pose_label = pickle.load(f)
+        # pose_data = pose_label
+        # ###
 
-        point_num = 18
-        pose_map = torch.zeros(point_num, H, W)
-        r = self.radius
-        pose = Image.new('L', (W, H))
-        pose_draw = ImageDraw.Draw(pose)
-        for i in range(point_num):
-            one_map = Image.new('L', (W, H))
-            draw = ImageDraw.Draw(one_map)
-            if i in pose_data.keys():
-                pointx = pose_data[i][0]
-                pointy = pose_data[i][1]
-            else:
-                pointx = -1
-                pointy = -1
+        # point_num = 18
+        # pose_map = torch.zeros(point_num, H, W)
+        # r = self.radius
+        # pose = Image.new('L', (W, H))
+        # pose_draw = ImageDraw.Draw(pose)
+        # for i in range(point_num):
+        #     one_map = Image.new('L', (W, H))
+        #     draw = ImageDraw.Draw(one_map)
+        #     if i in pose_data.keys():
+        #         pointx = pose_data[i][0]
+        #         pointy = pose_data[i][1]
+        #     else:
+        #         pointx = -1
+        #         pointy = -1
 
-            #c_pointx = c_pointx * 192 / 762
-            #c_pointy = c_pointy * 256 / 1000
-            if pointx > 1 and pointy > 1:
-                draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-                pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-            one_map = self.transform_1ch(one_map)
-            pose_map[i] = one_map[0]
+        #     #c_pointx = c_pointx * 192 / 762
+        #     #c_pointy = c_pointy * 256 / 1000
+        #     if pointx > 1 and pointy > 1:
+        #         draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+        #         pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+        #     one_map = self.transform_1ch(one_map)
+        #     pose_map[i] = one_map[0]
 
         """
         t_pose_data = - np.ones((18, 2), dtype=int)
@@ -231,24 +231,24 @@ class CFDataset(data.Dataset):
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
             'image': image,  # source image
-            'head': crop_head,# cropped head from source image
-            'pose': pose_map,#pose map
+            # 'head': crop_head,# cropped head from source image
+            # 'pose': pose_map,#pose map
             #'shape': shape,
-            'shape_sample': shape_sample,
+            # 'shape_sample': shape_sample,
             #'grid_image': im_g,
             # if self.opt.stage == "GMM":
             #     'target_softmax_shape': target_softmax_shape,
-            'one_hot': one_hot,# one_hot - body shape
-            'upper_mask': cloth,# cropped cloth mask
-            'head_mask': head,#head mask
+            # 'one_hot': one_hot,# one_hot - body shape
+            # 'upper_mask': cloth,# cropped cloth mask
+            # 'head_mask': head,#head mask
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
-            'off_cloth': off_cloth,#source image - cloth
-            'cloth_sample': cloth_sample,#coarse cloth mask
-            'arms_mask': arms,
-            'pants_mask': pants,
-            'crop_pants': crop_pants,
-            'crop_arms': crop_arms,
+            # 'off_cloth': off_cloth,#source image - cloth
+            # 'cloth_sample': cloth_sample,#coarse cloth mask
+            # 'arms_mask': arms,
+            # 'pants_mask': pants,
+            # 'crop_pants': crop_pants,
+            # 'crop_arms': crop_arms,
             }
         #for i in result.keys():
         #    print("%s - type: %s" %(i,type(result[i])))
