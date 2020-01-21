@@ -12,9 +12,10 @@ from dataloader_viton import *
 import argparse
 
 INPUT_SIZE = (192, 256)
-EPOCHS = 2000
+EPOCHS = 10
+PYRAMID_HEIGHT = 4
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -23,7 +24,7 @@ def get_opt():
     parser.add_argument('-j', '--workers', type=int, default=1)
     parser.add_argument('-b', '--batch-size', type=int, default=1)
     
-    parser.add_argument("--dataroot", default = "/home/fashionteam/Taeho/VITON/train")
+    parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/train/")
     parser.add_argument("--datamode", default = "")
     parser.add_argument("--stage", default = "1")
     parser.add_argument("--data_list", default = "MVCup_pair.txt")
@@ -38,45 +39,53 @@ def get_opt():
     parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 100)
-    parser.add_argument("--keep_step", type=int, default = 100000)
-    parser.add_argument("--decay_step", type=int, default = 100000)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
 
     opt = parser.parse_args()
     return opt
 
-def train(opt, epoch):
-    model = FlowNet(4).to(device)
+def save_checkpoint(model, save_path):
+    if not os.path.exists(os.path.dirname(save_path)):
+        os.makedirs(os.path.dirname(save_path))
+
+    torch.save(model.cpu().state_dict(), save_path)
+    model.to(device)
+
+def train(opt):
+    model = FlowNet(PYRAMID_HEIGHT, 4, 1)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
 
-    model.cuda()
+    model.to(device)
     model.train()
+    Flow = FlowLoss().to(device)
 
-    for step in range(opt.keep_step):
-        inputs = train_loader.next_batch()
+    for epoch in range(EPOCHS):
+        for step in range(len(train_loader.dataset)):
+            inputs = train_loader.next_batch()
 
-        con_cloth = inputs['cloth'].to(device)
-        con_cloth_mask = inputs['cloth_mask'].to(device)
-        tar_cloth = inputs['crop_cloth'].to(device)
-        tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
+            con_cloth = inputs['cloth'].to(device)
+            con_cloth_mask = inputs['cloth_mask'].to(device)
+            tar_cloth = inputs['crop_cloth'].to(device) 
+            tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
 
-        optimizer.zero_grad()
-        print(torch.cat([con_cloth, con_cloth_mask], 1).shape, tar_cloth_mask.shape)
-        result = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
-        # TODO : save result
-        optimizer.zero_grad()
-        model.backward(tar_cloth)
-        optimizer.step()
-        result = model.current_results()
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
+            optimizer.zero_grad()
+            loss = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
+            loss.backward()
+            optimizer.step()
 
-        if batch_idx % 50 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), result['loss']))
+            if (step+1) % opt.display_count == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch+1, (step+1) * 1, len(train_loader.dataset),
+                    100. * (step+1) / len(train_loader.dataset), loss.item()))
+
+            if (step+1) % opt.save_count == 0:
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'step_%06d.pth' % (step+1)))
 
 if __name__ == '__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"]="3"
+
     opt = get_opt()
-    for i in range(EPOCHS):
-        train(opt, i)
+    train(opt)
