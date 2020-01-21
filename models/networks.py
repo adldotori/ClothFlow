@@ -10,8 +10,10 @@ from torchvision import models
 
 from models.loss import *
 
-DEBUG = True
+DEBUG = False
 MAX_CH = 256
+
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -19,11 +21,10 @@ N = 4 or 5
 """
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
-	model = nn.Sequential(
+	return nn.Sequential(
 		nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, bias=bias),
 		norm_layer(out_channels),
 		)
-	return model
 
 def deconv(in_channels, out_channels, kernel_size=4, padding=1, activation = "relu"):
 	if activation == "leaky":
@@ -113,10 +114,11 @@ class STN(nn.Module):
 			nn.Linear(input, 32),
 			nn.ReLU(True),
 			nn.Linear(32, 3*2)
-			)
+			).to(device)
 
 	def forward(self, x, flow):
-		_flow = self.localization(flow) 
+		
+		_flow = self.localization(flow).to(device)
 		_flow_shape = _flow.shape
 		_flow = _flow.view(-1, 10 * _flow_shape[-1] * _flow_shape[-2])
 
@@ -130,6 +132,8 @@ class STN(nn.Module):
 		theta = theta.view(-1, 2, 3) # matrix for transformation
 
 		grid = F.affine_grid(theta, x.size())
+		
+		# flow = flow.reshape(flow.shape[0], flow.shape[2], flow.shape[3], flow.shape[1])
 		x = F.grid_sample(x, grid)
 		return x
 
@@ -141,19 +145,20 @@ class FPN(nn.Module):
 		super(FPN, self).__init__()
 		self.N = N
 		self.ch = ch_list
-		print("self.ch: {}".format(self.ch))
+		if DEBUG:
+			print("self.ch: {}".format(self.ch))
 
 		# encoding layer - left to right
 		self.conv = []
 		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i], i)) 
+			self.conv.append(BasicBlock(self.ch[i], i).to(device))
 		
-		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0)
+		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0).to(device)
 
 		# decoding layer - left to right
 		self.deconv = []
 		for i in range(self.N-1):
-			self.deconv.append(deconv(self.ch[-1-i], 256, kernel_size=4, padding=1))
+			self.deconv.append(deconv(self.ch[-1-i], 256, kernel_size=4, padding=1).to(device))
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
@@ -186,36 +191,30 @@ class FlowNet(nn.Module):
 		for i in range(self.N):
 			if (i==0): 
 				self.src.append(src_ch)
-			else:
-				self.src.append(2**(i+5)) # start with 32
-
-		for i in range(self.N):
-			if (i==0): 
 				self.tar.append(tar_ch)
 			else:
+				self.src.append(2**(i+5)) # start with 32
 				self.tar.append(2**(i+5)) # start with 32
 
-		self.SourceFPN = FPN(self.N, self.src)
-		self.TargetFPN = FPN(self.N, self.tar)
+		self.SourceFPN = FPN(self.N, self.src).to(device)
+		self.TargetFPN = FPN(self.N, self.tar).to(device)
 
 		# list for Warp - left to right
 		self.stn = []
 		for i in range(self.N):
-			self.stn.append(STN(2))
+			self.stn.append(STN(2).to(device))
 
 		# E layer - left to right
 		self.E = []
 		for i in range(self.N):
-			self.E.append(predict_flow(MAX_CH * 2))
+			self.E.append(predict_flow(MAX_CH * 2).to(device))
 
-		self.lambda_struct = 10
-		self.lambda_smt = 2
-		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest").to(device)
+
 
 	def forward(self, src, tar):
 		#input source,target image
 
-		#  TODO: src, tar parse
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
@@ -229,40 +228,22 @@ class FlowNet(nn.Module):
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
-		last_F = self.upsample(self.F[-1])
+		# last_F = self.upsample(self.F[-1])
 		if DEBUG:
 			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
 		self.result = self.stn[-1](src, self.F[-1])
-		cloth = self.result[:, :3, :, :]
-		mask = self.result[:, 3:4, :, :]
+
+		self.warp_cloth = self.result[:, :3, :, :]
+		self.warp_mask = self.result[:, 3:4, :, :]
+		self.tar_mask = tar
+
 		if DEBUG:
-			print("**********shape of cloth: {}, shape of mask: {}***********".format(cloth.shape, mask.shape))
-		# TODO: result parse
-		return cloth, mask
+			print("**********shape of cloth: {}, shape of mask: {}***********".format(self.warp_cloth.shape, self.warp_mask.shape))
 
-	def backward(self):
-		self.loss_roi_perc = loss_roi_perc(self.warp_seg, self.warp_cloth, self.t_seg, self.t_cloth)
-		self.loss_struct = loss_struct(self.warp_seg, self.t_seg) 
-		self.loss_smt = 0
-		for i in self.N:
-			self.loss_smt += loss_smt(self.F[i])
+		return self.F, self.warp_cloth, self.warp_mask
 
-		self.loss_total =  self.loss_roi_perc + self.lambda_struct * self.loss_struct + self.lambda_smt * self.loss_smt
 
-		loss_total.backward()
 
-	def current_results():
-		return { 'loss': self.loss_total }
-
-	def loss_struct(self, src, tar):
-		return nn.L1loss(src, tar)
-
-	def loss_roi_perc(self, src_seg, src_cloth, tar_seg, tar_cloth):
-		return VGGLoss(src_seg * src_cloth, tar_seg * tar_cloth)
-
-	def loss_smt(self, mat):
-		return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-				torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
 
