@@ -11,6 +11,8 @@ from torchvision import models
 from loss import *
 
 device = torch.device("cuda:2")
+DEBUG = True
+MAX_CH = 256
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -104,10 +106,6 @@ class STN(nn.Module):
 			nn.ReLU(True)
 		)
 
-		self.conv1 = nn.Conv2d(input_ch, 8, 7, 1)
-		self.norm = nn.BatchNorm2d(8)
-		self.maxpool = nn.MaxPool2d(2, stride=2)
-
 		# Regressor for the 3*2 affine matrix
 		self.fc_loc = None 
 
@@ -118,18 +116,18 @@ class STN(nn.Module):
 			nn.Linear(32, 3*2)
 			)
 
-	def forward(self, x):
-		_x = self.localization(x) 
-		_x_shape = _x.shape
-		_x = _x.view(-1, 10 * _x_shape[-1] * _x_shape[-2])
+	def forward(self, x, flow):
+		_flow = self.localization(flow) 
+		_flow_shape = _flow.shape
+		_flow = _flow.view(-1, 10 * _flow_shape[-1] * _flow_shape[-2])
 
 		if (self.fc_loc == None):
-			self.fc_loc = self._fc_loc(10 * _x_shape[-1] * _x_shape[-2]) 
+			self.fc_loc = self._fc_loc(10 * _flow_shape[-1] * _flow_shape[-2]) 
 			#Initialize the weights/bias with identity transformation
 			self.fc_loc[2].weight.data.zero_()
 			self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
 
-		theta = self.fc_loc(_x)
+		theta = self.fc_loc(_flow)
 		theta = theta.view(-1, 2, 3) # matrix for transformation
 
 		grid = F.affine_grid(theta, x.size())
@@ -169,14 +167,12 @@ class FPN(nn.Module):
 		encoder.append(input)
 		for i in range(self.N):
 			encoder.append(self.conv[i](encoder[-1]))
-			# print("shape of encoder {} is {}".format(i, encoder[-1].shape))
 
 		decoder.append(self.toplayer(encoder[-1]))
 
 		for i in range(self.N-1):
 			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[self.N - 1 - i]))
 			decoder.append(x)
-			# print("shape of decoder {} is {}".format(i+1, decoder[-1].shape))
 		return decoder
 
 	# def deconv_forward(self, input, i):
@@ -204,17 +200,13 @@ class FlowNet(nn.Module):
 
 		# list for Warp - left to right
 		self.stn = []
-		for i in range(self.N-1):
-			self.stn.append(STN(258))
-		self.stn.append(STN(5))
+		for i in range(self.N):
+			self.stn.append(STN(2))
 
 		# E layer - left to right
 		self.E = []
-		self.E.append(predict_flow(512))
-		for i in range(self.N - 1):
-			# TODO: i=0일 때 -로 들어감
-			# multiple by 2 due to concat (Sn, Tn)
-			self.E.append(predict_flow(514))
+		for i in range(self.N):
+			self.E.append(predict_flow(MAX_CH * 2))
 
 		self.lambda_struct = 10
 		self.lambda_smt = 2
@@ -233,13 +225,14 @@ class FlowNet(nn.Module):
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
 		for i in range(self.N - 1):
 			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
-			warp = self.stn[i](torch.cat([src_conv[i+1], upsample_F], 1)) #concat? 
+			warp = self.stn[i](src_conv[i+1], upsample_F) #concat? 
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
 		last_F = self.upsample(self.F[-1])
-		print("*******************shape fo src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
-		self.result = self.stn[-1](torch.cat([src, self.F[-1]], 1))
+		if DEBUG:
+			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
+		self.result = self.stn[-1](src, self.F[-1])
 		# TODO: result parse
 		return self.result
 
@@ -250,9 +243,12 @@ class FlowNet(nn.Module):
 		for i in self.N:
 			self.loss_smt += loss_smt(self.F[i])
 
-		self.loss_total =  self.loss_roi_perc+ self.lambda_struct * self.loss_struct + self.lambda_smt * self.loss_smt
+		self.loss_total =  self.loss_roi_perc + self.lambda_struct * self.loss_struct + self.lambda_smt * self.loss_smt
 
 		loss_total.backward()
+
+	def current_results():
+		return { 'loss': self.loss_total }
 
 	def loss_struct(self, src, tar):
 		return nn.L1loss(src, tar)
@@ -263,12 +259,11 @@ class FlowNet(nn.Module):
 	def loss_smt(self, mat):
 		return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
 				torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
-
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
 
 def test_STN():
-	return STN(258)
+	return STN(256)
 
 def test_FlowNet():
 	return FlowNet(4, 3)
