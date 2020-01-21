@@ -8,9 +8,8 @@ import numpy as np
 from torch.autograd import Variable
 from torchvision import models
 
-from loss import *
+from models.loss import *
 
-device = torch.device("cuda:2")
 DEBUG = True
 MAX_CH = 256
 """
