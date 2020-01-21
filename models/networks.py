@@ -59,7 +59,7 @@ class BasicBlock(nn.Module):
 	downsample + residual block
 	"""
 
-	def __init__(self, c_num, norm="batch", activation="relu"):
+	def __init__(self, c_num, i, norm="batch", activation="relu"):
 		super(BasicBlock, self).__init__()
 		
 		if norm == "batch":
@@ -71,7 +71,7 @@ class BasicBlock(nn.Module):
 		else:
 			raise NotImplementedError()
 
-		if (c_num == 3 or c_num == 6):
+		if (i==0):
 			self.conv_block1 = conv(c_num, 64, 2, bias=use_bias, norm_layer=norm_layer)
 			self.conv_block2 = conv(64, 64, 1, bias=use_bias, norm_layer=norm_layer)
 		else:
@@ -147,7 +147,7 @@ class FPN(nn.Module):
 		# encoding layer - left to right
 		self.conv = []
 		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i])) 
+			self.conv.append(BasicBlock(self.ch[i], i)) 
 		
 		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0)
 
@@ -188,13 +188,13 @@ class FlowNet(nn.Module):
 			if (i==0): 
 				self.src.append(src_ch)
 			else:
-				self.src.append(min(2**(i+5), 256)) # start with 32
+				self.src.append(2**(i+5)) # start with 32
 
 		for i in range(self.N):
 			if (i==0): 
 				self.tar.append(tar_ch)
 			else:
-				self.tar.append(min(2**(i+5), 256)) # start with 32
+				self.tar.append(2**(i+5)) # start with 32
 
 		self.SourceFPN = FPN(self.N, self.src)
 		self.TargetFPN = FPN(self.N, self.tar)
@@ -234,11 +234,12 @@ class FlowNet(nn.Module):
 		if DEBUG:
 			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
 		self.result = self.stn[-1](src, self.F[-1])
-		_src, _tar = torch.chunk(self.result, 2, dim=1)
+		cloth = self.result[:, :3, :, :]
+		mask = self.result[:, 3:4, :, :]
 		if DEBUG:
-			print("**********shape of _src: {}, shape of _tar: {}***********".format(_src.shape, _tar.shape))
+			print("**********shape of cloth: {}, shape of mask: {}***********".format(cloth.shape, mask.shape))
 		# TODO: result parse
-		return _src, _tar
+		return cloth, mask
 
 	def backward(self):
 		self.loss_roi_perc = loss_roi_perc(self.warp_seg, self.warp_cloth, self.t_seg, self.t_cloth)
@@ -270,11 +271,11 @@ def test_STN():
 	return STN(256)
 
 def test_FlowNet():
-	return FlowNet(4, 6, 3)
+	return FlowNet(5, 4, 1)
 
 def test():
 	net = test_FlowNet()
-	fms = net(Variable(torch.randn(1, 6, 192, 256)), Variable(torch.randn(1, 3, 192, 256)))
+	fms = net(Variable(torch.randn(1, 4, 192, 256)), Variable(torch.randn(1, 1, 192, 256)))
 
 if __name__ == "__main__":
 	test()
