@@ -8,9 +8,9 @@ import numpy as np
 from torch.autograd import Variable
 from torchvision import models
 
-from models.loss import *
+from loss import *
 
-
+device = torch.device("cuda:2")
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -89,8 +89,6 @@ class BasicBlock(nn.Module):
 
 """
 class for Spatial Transformer Network 
-
-TODO: change channels to be dependent on input channels
 """
 class STN(nn.Module):
 	# NEED to check channel number ==> output should be 3*2
@@ -105,6 +103,10 @@ class STN(nn.Module):
 			nn.MaxPool2d(2, stride=2),
 			nn.ReLU(True)
 		)
+
+		self.conv1 = nn.Conv2d(input_ch, 8, 7, 1)
+		self.norm = nn.BatchNorm2d(8)
+		self.maxpool = nn.MaxPool2d(2, stride=2)
 
 		# Regressor for the 3*2 affine matrix
 		self.fc_loc = None 
@@ -141,7 +143,6 @@ class FPN(nn.Module):
 	def __init__(self, N, ch_list):
 		super(FPN, self).__init__()
 		self.N = N
-		self.decoder = []
 		self.ch = ch_list
 		print("self.ch: {}".format(self.ch))
 
@@ -150,31 +151,33 @@ class FPN(nn.Module):
 		for i in range(self.N):
 			self.conv.append(BasicBlock(self.ch[i])) 
 		
-		self.toplayer = deconv(self.ch[-1], 256, kernel_size=1, padding=0)
+		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0)
 
 		# decoding layer - left to right
 		self.deconv = []
-		for i in range(self.N-2):
-			self.deconv.append(deconv(self.ch[-2-i], 256, kernel_size=3, padding=1))
-
-		# upsampling layer - right to left
-		self.upsample = []
 		for i in range(self.N-1):
-			self.upsample.append(upconv(self.ch[self.N-1-i], self.ch[self.N-2-i]))
+			self.deconv.append(deconv(self.ch[-1-i], 256, kernel_size=4, padding=1))
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
 		return F.upsample(x, size=(H, W), mode="bilinear") + y
 
 	def forward(self, input):
-		ret = input
+		encoder = []
+		decoder = []
+
+		encoder.append(input)
 		for i in range(self.N):
-			ret = self.conv[i](ret)
-			print("shape of ret {} is {}".format(i, ret.shape))
-		decoder[0] = self.toplayer(ret)
+			encoder.append(self.conv[i](encoder[-1]))
+			# print("shape of encoder {} is {}".format(i, encoder[-1].shape))
+
+		decoder.append(self.toplayer(encoder[-1]))
+
 		for i in range(self.N-1):
-			decoder[i+1] = self._upsample_add(decoder[i], self.deconv[i])
-		return self.decoder
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[self.N - 1 - i]))
+			decoder.append(x)
+			# print("shape of decoder {} is {}".format(i+1, decoder[-1].shape))
+		return decoder
 
 	# def deconv_forward(self, input, i):
 	# 	ret_dec = self.deconv[i](input)
@@ -182,9 +185,6 @@ class FPN(nn.Module):
 	# 	add_enc = _upsample.add(self.ret_list[self.N-i-1])
 	# 	return torch.cat([ret_dec, add_ret], 1)
 
-"""
-TODO: max channel should be 256 - ok
-"""
 class FlowNet(nn.Module):
 	def __init__(self, N, input_ch = 3):
 		super(FlowNet, self).__init__()
@@ -205,14 +205,16 @@ class FlowNet(nn.Module):
 		# list for Warp - left to right
 		self.stn = []
 		for i in range(self.N-1):
-			self.stn.append(STN(self.ch[-2-i]))
+			self.stn.append(STN(258))
+		self.stn.append(STN(5))
 
 		# E layer - left to right
 		self.E = []
-		for i in range(self.N):
+		self.E.append(predict_flow(512))
+		for i in range(self.N - 1):
 			# TODO: i=0일 때 -로 들어감
 			# multiple by 2 due to concat (Sn, Tn)
-			self.E.append(predict_flow(self.ch[-1-i] * 2))
+			self.E.append(predict_flow(514))
 
 		self.lambda_struct = 10
 		self.lambda_smt = 2
@@ -225,25 +227,19 @@ class FlowNet(nn.Module):
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
-
-		"""
-		TODO: change code
-		E => predict_flow - ok
-		"""
 		#concat for E4 to E1
 
 		self.F = []
-		self.F.append(self.E[0](torch.cat([src_conv, tar_conv], 1))) #[W, H, 2]
+		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
 		for i in range(self.N - 1):
-			src_conv = self.SourceFPN.deconv_forward(src_conv, i) #[2W, 2H, C]
-			tar_conv = self.TargetFPN.deconv_forward(tar_conv, i) #[2W, 2H, C]
 			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
-			warp = self.stn[i](torch.cat([src_conv, upsample_F], 1)) #concat? 
-			concat = torch.cat([warp, tar_conv], 1)
+			warp = self.stn[i](torch.cat([src_conv[i+1], upsample_F], 1)) #concat? 
+			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
 		last_F = self.upsample(self.F[-1])
-		self.result = self.stn[-1](torch.cat([src, last_F], 1))
+		print("*******************shape fo src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
+		self.result = self.stn[-1](torch.cat([src, self.F[-1]], 1))
 		# TODO: result parse
 		return self.result
 
@@ -272,17 +268,19 @@ def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
 
 def test_STN():
-	return STN(3)
+	return STN(258)
 
 def test_FlowNet():
 	return FlowNet(4, 3)
 
 def test():
-	net = test_FPN()
+	# net = test_FPN()
 	# net = test_STN()
-	# net = test_FlowNet()
-	fms = net(Variable(torch.randn(1, 3, 1024, 1024)))
-	# fms = net(Variable(torch.randn(1, 3, 1024, 1024), torch.randn(1, 3, 1024, 1024)))
+	net = test_FlowNet()
+	# fms = net(Variable(torch.randn(1, 258, 512, 512)))
+	# fms = net(Variable(torch.randn(1, 3, 1024, 1024)))
+	fms = net(Variable(torch.randn(1, 3, 1024, 1024)), Variable(torch.randn(1, 3, 1024, 1024)))
+	# print(fms[0].shape, fms[1].shape, fms[2].shape, fms[3].shape)
 	print(fms.shape)
 
 if __name__ == "__main__":
