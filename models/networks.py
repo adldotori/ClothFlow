@@ -71,9 +71,9 @@ class BasicBlock(nn.Module):
 		else:
 			raise NotImplementedError()
 
-		if (c_num == 3 or c_num == 1):
-			self.conv_block1 = conv(c_num, 32, 2, bias=use_bias, norm_layer=norm_layer)
-			self.conv_block2 = conv(32, 32, 1, bias=use_bias, norm_layer=norm_layer)
+		if (c_num == 3 or c_num == 6):
+			self.conv_block1 = conv(c_num, 64, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(64, 64, 1, bias=use_bias, norm_layer=norm_layer)
 		else:
 			self.conv_block1 = conv(c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
 			self.conv_block2 = conv(c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
@@ -175,28 +175,29 @@ class FPN(nn.Module):
 			decoder.append(x)
 		return decoder
 
-	# def deconv_forward(self, input, i):
-	# 	ret_dec = self.deconv[i](input)
-	# 	upsample = self.upsample[i](self.ret_list[self.N - i])
-	# 	add_enc = _upsample.add(self.ret_list[self.N-i-1])
-	# 	return torch.cat([ret_dec, add_ret], 1)
-
 class FlowNet(nn.Module):
-	def __init__(self, N, input_ch = 3):
+	def __init__(self, N, src_ch = 6, tar_ch = 3):
 		super(FlowNet, self).__init__()
 		self.N = N
 
 		# define channel list
-		self.ch = []
+		self.src = []
+		self.tar = []
 		
 		for i in range(self.N):
 			if (i==0): 
-				self.ch.append(input_ch)
+				self.src.append(src_ch)
 			else:
-				self.ch.append(min(2**(i+4), 256)) # start with 32
+				self.src.append(min(2**(i+5), 256)) # start with 32
 
-		self.SourceFPN = FPN(self.N, self.ch)
-		self.TargetFPN = FPN(self.N, self.ch)
+		for i in range(self.N):
+			if (i==0): 
+				self.tar.append(tar_ch)
+			else:
+				self.tar.append(min(2**(i+5), 256)) # start with 32
+
+		self.SourceFPN = FPN(self.N, self.src)
+		self.TargetFPN = FPN(self.N, self.tar)
 
 		# list for Warp - left to right
 		self.stn = []
@@ -266,16 +267,11 @@ def test_STN():
 	return STN(256)
 
 def test_FlowNet():
-	return FlowNet(4, 3)
+	return FlowNet(4, 6, 3)
 
 def test():
-	# net = test_FPN()
-	# net = test_STN()
 	net = test_FlowNet()
-	# fms = net(Variable(torch.randn(1, 258, 512, 512)))
-	# fms = net(Variable(torch.randn(1, 3, 1024, 1024)))
-	fms = net(Variable(torch.randn(1, 3, 1024, 1024)), Variable(torch.randn(1, 3, 1024, 1024)))
-	# print(fms[0].shape, fms[1].shape, fms[2].shape, fms[3].shape)
+	fms = net(Variable(torch.randn(1, 6, 192, 256)), Variable(torch.randn(1, 3, 192, 256)))
 	print(fms.shape)
 
 if __name__ == "__main__":
