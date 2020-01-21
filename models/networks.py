@@ -226,7 +226,7 @@ class FlowNet(nn.Module):
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
 		for i in range(self.N - 1):
 			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
-			warp = self.stn[i](src_conv[i+1], upsample_F) #concat? 
+			warp = self.stn[i](src_conv[i+1], upsample_F)  
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
@@ -234,8 +234,11 @@ class FlowNet(nn.Module):
 		if DEBUG:
 			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
 		self.result = self.stn[-1](src, self.F[-1])
+		_src, _tar = torch.chunk(self.result, 2, dim=1)
+		if DEBUG:
+			print("**********shape of _src: {}, shape of _tar: {}***********".format(_src.shape, _tar.shape))
 		# TODO: result parse
-		return self.result
+		return _src, _tar
 
 	def backward(self):
 		self.loss_roi_perc = loss_roi_perc(self.warp_seg, self.warp_cloth, self.t_seg, self.t_cloth)
@@ -272,7 +275,6 @@ def test_FlowNet():
 def test():
 	net = test_FlowNet()
 	fms = net(Variable(torch.randn(1, 6, 192, 256)), Variable(torch.randn(1, 3, 192, 256)))
-	print(fms.shape)
 
 if __name__ == "__main__":
 	test()
