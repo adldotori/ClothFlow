@@ -72,7 +72,7 @@ def train(opt):
     Flow = FlowLoss().to(device)
 
     writer = SummaryWriter()
-    
+
     for epoch in tqdm_notebook(range(EPOCHS), desc='EPOCH'):
         for step in tqdm_notebook(range(len(train_loader.dataset)), desc='step'):
             inputs = train_loader.next_batch()
@@ -93,22 +93,19 @@ def train(opt):
             loss.backward()
             optimizer.step()
 
-<<<<<<< HEAD
             # if (step+1) % opt.display_count == 0:
                 # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 #     epoch+1, (step+1) * 1, len(train_loader.dataset),
                 #     100. * (step+1) / len(train_loader.dataset), loss.item()))
-=======
             writer.add_scalar("loss/roi_perc", roi_perc, step)
             writer.add_scalar("loss/struct", struct, step)
             writer.add_scalar("loss/smt", smt, step)
             writer.close()
 
-            if (step+1) % opt.display_count == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch+1, (step+1) * 1, len(train_loader.dataset),
-                    100. * (step+1) / len(train_loader.dataset), loss.item()))
->>>>>>> 832da05656ead46309225214d33574039111be94
+            # if (step+1) % opt.display_count == 0:
+            #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #         epoch+1, (step+1) * 1, len(train_loader.dataset),
+            #         100. * (step+1) / len(train_loader.dataset), loss.item()))
 
             if (epoch * len(train_loader.dataset) + step + 1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
