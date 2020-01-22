@@ -243,6 +243,7 @@ class CFDataset(data.Dataset):
             # 'head_mask': head,#head mask
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
+            'name' : name,
             # 'off_cloth': off_cloth,#source image - cloth
             # 'cloth_sample': cloth_sample,#coarse cloth mask
             # 'arms_mask': arms,
