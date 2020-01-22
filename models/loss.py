@@ -95,7 +95,7 @@ class FlowLoss(nn.Module):
 
         print(_loss_roi_perc, _loss_struct, _loss_smt)
         return _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt
-
+        
     def loss_struct(self, src, tar):
         return self.l1_loss(src, tar)
 
