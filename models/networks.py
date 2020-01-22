@@ -177,7 +177,7 @@ class FPN(nn.Module):
 		decoder.append(self.toplayer(encoder[-1]))
 
 		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[self.N - 1 - i]))
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[- 2 - i]))
 			decoder.append(x)
 
 		if SMOOTH:
