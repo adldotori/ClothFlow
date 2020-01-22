@@ -235,10 +235,9 @@ class FlowNet(nn.Module):
 		# last_F = self.upsample(self.F[-1])
 		if DEBUG:
 			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
-		self.result = self.stn[-1](src, self.F[-1])
 
-		self.warp_cloth = self.result[:, :3, :, :]
-		self.warp_mask = self.result[:, 3:4, :, :]
+		self.warp_cloth = self.stn[-1](src[:,0:3,:,:], self.F[-1])
+		self.warp_mask = self.stn[-1](src[:,3:4,:,:], self.F[-1])
 		self.tar_mask = tar
 
 		if DEBUG:
