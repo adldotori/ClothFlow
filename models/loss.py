@@ -72,7 +72,8 @@ class VGGLoss(nn.Module):
     def forward(self, x, y):
         self.vgg.zero_loss()
         self.vgg(x,y)
-        loss = self.vgg.get_loss()
+        loss = self.criterion(x,y)
+        loss += self.vgg.get_loss()
         self.vgg.zero_loss()  
         return loss
 
@@ -82,6 +83,7 @@ class FlowLoss(nn.Module):
         super(FlowLoss, self).__init__()
         self.l1_loss = nn.L1Loss()
         self.vgg_loss = VGGLoss()
+        self.lambda_roi_perc = 1
         self.lambda_struct = 10
         self.lambda_smt = 2
 
@@ -93,7 +95,7 @@ class FlowLoss(nn.Module):
         for i in range(N-1):
             _loss_smt += self.loss_smt(F[i+1])
 
-        return _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt, _loss_roi_perc, _loss_struct, _loss_smt
+        return self.lambda_roi_perc * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt, _loss_roi_perc, _loss_struct, _loss_smt
 
     def loss_struct(self, src, tar):
         return self.l1_loss(src, tar)
@@ -104,7 +106,7 @@ class FlowLoss(nn.Module):
         return self.vgg_loss(ex_src_mask * src_cloth, ex_tar_mask * tar_cloth)
 
     def loss_smt(self, mat):
-        return torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-            torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))
+        return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])).item() + \
+            torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :])).item())/(mat.shape[2]*mat.shape[3])
 
         
