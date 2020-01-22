@@ -15,17 +15,11 @@ from tqdm import tqdm_notebook
 from tensorboardX import SummaryWriter
 
 INPUT_SIZE = (192, 256)
-<<<<<<< HEAD
 EPOCHS = 15
 PYRAMID_HEIGHT = 4
 
 device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
-=======
-EPOCHS = 10
-PYRAMID_HEIGHT = 5
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
->>>>>>> 832da05656ead46309225214d33574039111be94
 
 def get_opt():
     parser = argparse.ArgumentParser()
