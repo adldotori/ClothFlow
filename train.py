@@ -99,7 +99,5 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'Epoch:%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
     opt = get_opt()
     train(opt)
