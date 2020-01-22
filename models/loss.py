@@ -78,7 +78,7 @@ class VGGLoss(nn.Module):
 
 
 class FlowLoss(nn.Module):
-    def __init__(self, ):
+    def __init__(self, opt):
         super(FlowLoss, self).__init__()
         self.l1_loss = nn.L1Loss()
         self.vgg_loss = VGGLoss()
@@ -87,9 +87,9 @@ class FlowLoss(nn.Module):
 	#self.lambda_struct = 10
         #self.lambda_smt = 2
 
-        self.lambda_struct = 10
-        self.lambda_smt = 0.1
-        self.lambda_roi = 10
+        self.lambda_struct = opt.struct_loss
+        self.lambda_smt = opt.smt_loss
+        self.lambda_roi = opt.perc_loss
 	
     def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth):
         _loss_roi_perc = self.loss_roi_perc(
