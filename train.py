@@ -56,7 +56,7 @@ def save_checkpoint(model, save_path):
 
 def train(opt):
     model = FlowNet(PYRAMID_HEIGHT, 4, 1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
 
@@ -68,6 +68,7 @@ def train(opt):
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
+            cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             inputs = train_loader.next_batch()
 
             con_cloth = inputs['cloth'].to(device)
@@ -75,24 +76,24 @@ def train(opt):
             tar_cloth = inputs['crop_cloth'].to(device) 
             tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
 
-            writer.add_image("con_cloth", con_cloth, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
-            writer.add_image("con_cloth_mask", con_cloth_mask, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
-            writer.add_image("tar_cloth", tar_cloth, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
-            writer.add_image("tar_cloth_mask", tar_cloth_mask, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
+            writer.add_image("con_cloth", con_cloth, cnt, dataformats="NCHW")
+            writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
+            writer.add_image("tar_cloth", tar_cloth, cnt, dataformats="NCHW")
+            writer.add_image("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
 
             F, warp_cloth, warp_mask = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
 
-            writer.add_image("warp_cloth", warp_cloth, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
-            writer.add_image("warp_cloth_mask", warp_mask, epoch * len(train_loader.dataset) + step * opt.batch_size, dataformats="NCHW")
+            writer.add_image("warp_cloth", warp_cloth, cnt, dataformats="NCHW")
+            writer.add_image("warp_cloth_mask", warp_mask, cnt, dataformats="NCHW")
 
             optimizer.zero_grad()
             loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
             loss.backward()
             optimizer.step()
 
-            writer.add_scalar("loss/roi_perc", roi_perc, step)
-            writer.add_scalar("loss/struct", struct, step)
-            writer.add_scalar("loss/smt", smt, step)
+            writer.add_scalar("loss/roi_perc", roi_perc, cnt)
+            writer.add_scalar("loss/struct", struct, cnt)
+            writer.add_scalar("loss/smt", smt, cnt)
             writer.close()
 
             if (step + 1) % opt.save_count == 0:

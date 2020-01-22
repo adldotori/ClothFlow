@@ -15,7 +15,6 @@ class Vgg19(nn.Module):
         self.slice5 = torch.nn.Sequential()
         self.criterion = nn.L1Loss()
         self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
-        self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         for x in range(2):
             self.slice1.add_module(str(x), vgg_pretrained_features[x])
         for x in range(2, 7):
@@ -66,7 +65,6 @@ class VGGLoss(nn.Module):
         self.vgg = Vgg19()
         self.vgg.cuda()
         self.criterion = nn.L1Loss()
-        self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.layids = layids
 
     def forward(self, x, y):
@@ -84,9 +82,9 @@ class FlowLoss(nn.Module):
         self.l1_loss = nn.L1Loss()
         self.vgg_loss = VGGLoss()
 
-        self.lambda_struct = 10
-        self.lambda_smt = 0.1
-        self.lambda_roi = 10
+        self.lambda_struct = 30
+        self.lambda_smt = 1
+        self.lambda_roi = 3
 	
     def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth):
         _loss_roi_perc = self.loss_roi_perc(
