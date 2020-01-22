@@ -11,11 +11,13 @@ from models.networks import *
 from dataloader_viton import *
 import argparse
 
+from tensorboardX import SummaryWriter
+
 INPUT_SIZE = (192, 256)
 EPOCHS = 10
-PYRAMID_HEIGHT = 4
+PYRAMID_HEIGHT = 5
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -61,6 +63,8 @@ def train(opt):
     model.train()
     Flow = FlowLoss().to(device)
 
+    writer = SummaryWriter()
+
     for epoch in range(EPOCHS):
         for step in range(len(train_loader.dataset)):
             inputs = train_loader.next_batch()
@@ -70,11 +74,21 @@ def train(opt):
             tar_cloth = inputs['crop_cloth'].to(device) 
             tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
 
+            writer.add_image("con_cloth", con_cloth, step, dataformats="NCHW")
+            writer.add_image("con_cloth_mask", con_cloth_mask, step, dataformats="NCHW")
+            writer.add_image("tar_cloth", tar_cloth, step, dataformats="NCHW")
+            writer.add_image("tar_cloth_mask", tar_cloth_mask, step, dataformats="NCHW")
+
             [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
             optimizer.zero_grad()
-            loss = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
+            loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
             loss.backward()
             optimizer.step()
+
+            writer.add_scalar("loss/roi_perc", roi_perc, step)
+            writer.add_scalar("loss/struct", struct, step)
+            writer.add_scalar("loss/smt", smt, step)
+            writer.close()
 
             if (step+1) % opt.display_count == 0:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -85,7 +99,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'step_%06d.pth' % (step+1)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]="3"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
     opt = get_opt()
     train(opt)

@@ -13,7 +13,7 @@ from models.loss import *
 DEBUG = False
 MAX_CH = 256
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
