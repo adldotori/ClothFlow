@@ -10,12 +10,13 @@ import numpy as np
 from models.networks import *
 from dataloader_viton import *
 import argparse
+from tqdm import tqdm_notebook
 
 INPUT_SIZE = (192, 256)
-EPOCHS = 10
+EPOCHS = 15
 PYRAMID_HEIGHT = 4
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -61,8 +62,8 @@ def train(opt):
     model.train()
     Flow = FlowLoss().to(device)
 
-    for epoch in range(EPOCHS):
-        for step in range(len(train_loader.dataset)):
+    for epoch in tqdm_notebook(range(EPOCHS), desc='EPOCH'):
+        for step in tqdm_notebook(range(len(train_loader.dataset)), desc='step'):
             inputs = train_loader.next_batch()
 
             con_cloth = inputs['cloth'].to(device)
@@ -76,13 +77,13 @@ def train(opt):
             loss.backward()
             optimizer.step()
 
-            if (step+1) % opt.display_count == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch+1, (step+1) * 1, len(train_loader.dataset),
-                    100. * (step+1) / len(train_loader.dataset), loss.item()))
+            # if (step+1) % opt.display_count == 0:
+                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                #     epoch+1, (step+1) * 1, len(train_loader.dataset),
+                #     100. * (step+1) / len(train_loader.dataset), loss.item()))
 
-            if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'step_%06d.pth' % (step+1)))
+            if (epoch * len(train_loader.dataset) + step + 1) % opt.save_count == 0:
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]="3"
