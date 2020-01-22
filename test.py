@@ -45,9 +45,8 @@ def get_opt():
 
 def load_checkpoint(model, checkpoint_path):
     if not os.path.exists(checkpoint_path):
-        print(error)
-        print(1/0)
-        return
+        print('[-] Checkpoint Load Error!')        
+        exit()
     model.load_state_dict(torch.load(checkpoint_path))
     model.to(device)
 
@@ -87,7 +86,7 @@ def test(opt):
 
         [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
         # optimizer.zero_grad()
-        loss = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
+        loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
         # loss.backward()
         # optimizer.step()
 
