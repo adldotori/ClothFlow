@@ -12,11 +12,20 @@ from dataloader_viton import *
 import argparse
 from tqdm import tqdm_notebook
 
+from tensorboardX import SummaryWriter
+
 INPUT_SIZE = (192, 256)
+<<<<<<< HEAD
 EPOCHS = 15
 PYRAMID_HEIGHT = 4
 
 device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+=======
+EPOCHS = 10
+PYRAMID_HEIGHT = 5
+
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+>>>>>>> 832da05656ead46309225214d33574039111be94
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -62,6 +71,8 @@ def train(opt):
     model.train()
     Flow = FlowLoss().to(device)
 
+    writer = SummaryWriter()
+    
     for epoch in tqdm_notebook(range(EPOCHS), desc='EPOCH'):
         for step in tqdm_notebook(range(len(train_loader.dataset)), desc='step'):
             inputs = train_loader.next_batch()
@@ -71,22 +82,39 @@ def train(opt):
             tar_cloth = inputs['crop_cloth'].to(device) 
             tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
 
+            writer.add_image("con_cloth", con_cloth, step, dataformats="NCHW")
+            writer.add_image("con_cloth_mask", con_cloth_mask, step, dataformats="NCHW")
+            writer.add_image("tar_cloth", tar_cloth, step, dataformats="NCHW")
+            writer.add_image("tar_cloth_mask", tar_cloth_mask, step, dataformats="NCHW")
+
             [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
             optimizer.zero_grad()
-            loss = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
+            loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
             loss.backward()
             optimizer.step()
 
+<<<<<<< HEAD
             # if (step+1) % opt.display_count == 0:
                 # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 #     epoch+1, (step+1) * 1, len(train_loader.dataset),
                 #     100. * (step+1) / len(train_loader.dataset), loss.item()))
+=======
+            writer.add_scalar("loss/roi_perc", roi_perc, step)
+            writer.add_scalar("loss/struct", struct, step)
+            writer.add_scalar("loss/smt", smt, step)
+            writer.close()
+
+            if (step+1) % opt.display_count == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch+1, (step+1) * 1, len(train_loader.dataset),
+                    100. * (step+1) / len(train_loader.dataset), loss.item()))
+>>>>>>> 832da05656ead46309225214d33574039111be94
 
             if (epoch * len(train_loader.dataset) + step + 1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]="3"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
     opt = get_opt()
     train(opt)
