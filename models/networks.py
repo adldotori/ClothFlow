@@ -13,7 +13,7 @@ from models.loss import *
 DEBUG = False
 MAX_CH = 256
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
@@ -117,24 +117,8 @@ class STN(nn.Module):
 			).to(device)
 
 	def forward(self, x, flow):
-		
-		_flow = self.localization(flow).to(device)
-		_flow_shape = _flow.shape
-		_flow = _flow.view(-1, 10 * _flow_shape[-1] * _flow_shape[-2])
-
-		if (self.fc_loc == None):
-			self.fc_loc = self._fc_loc(10 * _flow_shape[-1] * _flow_shape[-2]) 
-			#Initialize the weights/bias with identity transformation
-			self.fc_loc[2].weight.data.zero_()
-			self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
-
-		theta = self.fc_loc(_flow)
-		theta = theta.view(-1, 2, 3) # matrix for transformation
-
-		grid = F.affine_grid(theta, x.size())
-		
-		# flow = flow.reshape(flow.shape[0], flow.shape[2], flow.shape[3], flow.shape[1])
-		x = F.grid_sample(x, grid)
+		flow = flow.reshape(flow.shape[0], flow.shape[2], flow.shape[3], flow.shape[1])
+		x = F.grid_sample(x, flow)
 		return x
 
 """
