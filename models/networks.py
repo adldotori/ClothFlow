@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from torch.nn import init
 
 from torch.autograd import Variable
 from torchvision import models
@@ -12,6 +13,7 @@ from models.loss import *
 
 DEBUG = False
 MAX_CH = 256
+SMOOTH = False 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,21 +25,26 @@ N = 4 or 5
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
 	return nn.Sequential(
-		nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, bias=bias),
+		nn.Conv2d(in_channels, out_channels, kernel_size,
+		          stride, padding, dilation, bias=bias),
 		norm_layer(out_channels),
 		)
 
-def deconv(in_channels, out_channels, kernel_size=4, padding=1, activation = "relu"):
+
+def deconv(in_channels, out_channels, kernel_size=4, padding=1, activation="relu"):
 	if activation == "leaky":
 		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=padding, bias=True),
+				nn.ConvTranspose2d(in_channels, out_channels,
+				                   kernel_size=kernel_size, stride=2, padding=padding, bias=True),
 				nn.LeakyReLU(0.1, inplace=True)
 				)
 	else:
 		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=padding, bias=True),
+				nn.ConvTranspose2d(in_channels, out_channels,
+				                   kernel_size=kernel_size, stride=2, padding=padding, bias=True),
 				nn.ReLU()
 				)
+
 
 def upconv(in_channels, out_channels, mode="transpose"):
 	if mode == "transpose":
@@ -47,8 +54,10 @@ def upconv(in_channels, out_channels, mode="transpose"):
 	else:
 		return nn.Sequential(
 			nn.Upsample(mode="bilinear", scale_factor=2),
-			nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True, groups=1)
+			nn.Conv2d(in_channels, out_channels, kernel_size=3,
+			          stride=1, padding=1, bias=True, groups=1)
 			)
+
 
 def predict_flow(in_channels):
 	return nn.Conv2d(in_channels, 2, kernel_size=3, stride=1, padding=1, bias=True)
@@ -62,7 +71,7 @@ class BasicBlock(nn.Module):
 
 	def __init__(self, c_num, i, norm="batch", activation="relu"):
 		super(BasicBlock, self).__init__()
-		
+
 		if norm == "batch":
 			norm_layer = nn.BatchNorm2d
 			use_bias = False
@@ -72,12 +81,14 @@ class BasicBlock(nn.Module):
 		else:
 			raise NotImplementedError()
 
-		if (i==0):
+		if (i == 0):
 			self.conv_block1 = conv(c_num, 64, 2, bias=use_bias, norm_layer=norm_layer)
 			self.conv_block2 = conv(64, 64, 1, bias=use_bias, norm_layer=norm_layer)
 		else:
-			self.conv_block1 = conv(c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
-			self.conv_block2 = conv(c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block1 = conv(
+			    c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(c_num*2, c_num*2, 1,
+			                        bias=use_bias, norm_layer=norm_layer)
 
 		if activation == "leaky":
 			self.activation = nn.LeakyReLU(0.1, inplace=True)
@@ -90,9 +101,12 @@ class BasicBlock(nn.Module):
 		x = self.conv_block2(x)
 		return self.activation(x+residual)
 
+
 """
-class for Spatial Transformer Network 
+class for Spatial Transformer Network
 """
+
+
 class STN(nn.Module):
 	# NEED to check channel number ==> output should be 3*2
 	def __init__(self, input_ch):
@@ -108,23 +122,26 @@ class STN(nn.Module):
 		)
 
 		# Regressor for the 3*2 affine matrix
-		self.fc_loc = None 
+		self.fc_loc = None
 
 	def _fc_loc(self, input):
 		return nn.Sequential(
 			nn.Linear(input, 32),
 			nn.ReLU(True),
 			nn.Linear(32, 3*2)
-			).to(device)
+			)
 
 	def forward(self, x, flow):
-		flow = flow.reshape(flow.shape[0], flow.shape[2], flow.shape[3], flow.shape[1])
+		flow = flow.transpose(1, 2).transpose(2, 3)
 		x = F.grid_sample(x, flow)
 		return x
+
 
 """
 class for Feature Pyramid Networks
 """
+
+
 class FPN(nn.Module):
 	def __init__(self, N, ch_list):
 		super(FPN, self).__init__()
@@ -136,14 +153,21 @@ class FPN(nn.Module):
 		# encoding layer - left to right
 		self.conv = []
 		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i], i).to(device))
-		
-		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0).to(device)
+			self.conv.append(BasicBlock(self.ch[i], i))
+
+		self.toplayer = deconv(
+		    self.ch[-1]*2, 256, kernel_size=2, padding=0)
 
 		# decoding layer - left to right
 		self.deconv = []
 		for i in range(self.N-1):
-			self.deconv.append(deconv(self.ch[-1-i], 256, kernel_size=4, padding=1).to(device))
+			self.deconv.append(
+			    deconv(self.ch[-1-i], 256, kernel_size=4, padding=1))
+		self.conv = nn.ModuleList(self.conv)
+		self.deconv = nn.ModuleList(self.deconv)
+
+		# smoothing layer - reduce upsampling aliasing effect
+		self.smooth = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
@@ -160,50 +184,65 @@ class FPN(nn.Module):
 		decoder.append(self.toplayer(encoder[-1]))
 
 		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[self.N - 1 - i]))
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[- 2 - i]))
 			decoder.append(x)
-		return decoder
+
+		if SMOOTH:
+			_smooth = []
+			_smooth.append(decoder[0])
+			for i in range(self.N-1):
+				_smooth.append(self.smooth(decoder[i+1]))
+			return _smooth
+		else:
+			return decoder
+
 
 class FlowNet(nn.Module):
-	def __init__(self, N, src_ch = 6, tar_ch = 3):
+	def __init__(self, N, src_ch=6, tar_ch=3):
 		super(FlowNet, self).__init__()
 		self.N = N
 
 		# define channel list
 		self.src = []
 		self.tar = []
-		
+
 		for i in range(self.N):
-			if (i==0): 
+			if (i == 0):
 				self.src.append(src_ch)
 				self.tar.append(tar_ch)
 			else:
-				self.src.append(2**(i+5)) # start with 32
-				self.tar.append(2**(i+5)) # start with 32
+				self.src.append(2**(i+5))  # start with 32
+				self.tar.append(2**(i+5))  # start with 32
 
-		self.SourceFPN = FPN(self.N, self.src).to(device)
-		self.TargetFPN = FPN(self.N, self.tar).to(device)
+		self.SourceFPN = FPN(self.N, self.src)
+		self.TargetFPN = FPN(self.N, self.tar)
 
-		# list for Warp - left to right
+        # list for Warp - left to right
 		self.stn = []
 		for i in range(self.N):
-			self.stn.append(STN(2).to(device))
+			L = STN(2)
+			init_weights(L, 'xavier')
+			self.stn.append(L)
 
 		# E layer - left to right
 		self.E = []
 		for i in range(self.N):
-			self.E.append(predict_flow(MAX_CH * 2).to(device))
+			L = predict_flow(MAX_CH * 2)
+			init_weights(L, 'xavier')
+			self.E.append(L)
 
-		self.upsample = nn.Upsample(scale_factor=2, mode="nearest").to(device)
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+		self.stn = nn.ModuleList(self.stn)
+		self.E = nn.ModuleList(self.E)
 
 
 	def forward(self, src, tar):
-		#input source,target image
+		# input source,target image
 
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
-		#concat for E4 to E1
+		# concat for E4 to E1
 
 		self.F = []
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
@@ -240,6 +279,62 @@ def test_FlowNet():
 def test():
 	net = test_FlowNet()
 	fms = net(Variable(torch.randn(1, 4, 192, 256)), Variable(torch.randn(1, 1, 192, 256)))
+
+
+
+
+###################################
+######## Weight initialize ########
+###################################
+
+def weights_init_normal(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('Linear') != -1:
+        init.normal(m.weight.data, 0.0, 0.02)
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal_(m.weight.data, 1.0, 0.02)
+        init.constant_(m.bias.data, 0.0)
+
+
+def weights_init_xavier(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.xavier_normal_(m.weight.data, gain=0.02)
+    elif classname.find('Linear') != -1:
+        init.xavier_normal_(m.weight.data, gain=0.02)
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal_(m.weight.data, 1.0, 0.02)
+        init.constant_(m.bias.data, 0.0)
+
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('Linear') != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal_(m.weight.data, 1.0, 0.02)
+        init.constant_(m.bias.data, 0.0)
+
+
+def init_weights(net, init_type='normal'):
+    print('initialization method [%s]' % init_type)
+    if init_type == 'normal':
+        net.apply(weights_init_normal)
+    elif init_type == 'xavier':
+        net.apply(weights_init_xavier)
+    elif init_type == 'kaiming':
+        net.apply(weights_init_kaiming)
+    else:
+        raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+
+
+###################################
+######## Weight initialize ########
+###################################
 
 if __name__ == "__main__":
 	test()
