@@ -264,14 +264,11 @@ class CFDataLoader(object):
     def __init__(self, opt, dataset):
         super(CFDataLoader, self).__init__()
 
-        if opt.shuffle :
-            train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
-        else:
-            train_sampler = None
+        sampler = torch.utils.data.sampler.RandomSampler(dataset)
 
         self.data_loader = torch.utils.data.DataLoader(
-                dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
-                num_workers=opt.workers, pin_memory=True, sampler=train_sampler)
+                dataset, batch_size=opt.batch_size, shuffle=False,
+                num_workers=opt.workers, pin_memory=True, sampler=sampler)
         self.dataset = dataset
         self.data_iter = self.data_loader.__iter__()
        
