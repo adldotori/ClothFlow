@@ -22,7 +22,7 @@ from torch.nn import DataParallel as DP
 from tensorboardX import SummaryWriter
 
 INPUT_SIZE = (192, 256)
-EPOCHS = 10
+EPOCHS = 30
 PYRAMID_HEIGHT = 5
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '1,2,3'
@@ -52,8 +52,14 @@ def get_opt():
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 1000)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
+    
+    parser.add_argument("--smt_loss", type=float, default=1)
+    parser.add_argument("--perc_loss", type=float, default=10.0)
+    parser.add_argument("--struct_loss", type=float, default=10.0)
+    parser.add_argument("--naming", type=str, default="default")
 
     opt = parser.parse_args()
+    print(opt)
     return opt
 
 def save_checkpoint(model, save_path):
@@ -64,6 +70,7 @@ def save_checkpoint(model, save_path):
             pass
 
     torch.save(model.cpu().state_dict(), save_path)
+<<<<<<< HEAD
 
 def train(opt):
     opt.world_size = 1
@@ -74,6 +81,8 @@ def train(opt):
 
     model = FlowNet(PYRAMID_HEIGHT, 4, 1).to(opt.gpu)
     model = DP(model)
+    for name, param in model.named_parameters():
+        print(name,param.data.shape)
     # model = DDP(model, delay_allreduce=True)
     # model.train()
     Flow = FlowLoss().to(opt.gpu)
@@ -83,36 +92,44 @@ def train(opt):
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
 
-    writer = SummaryWriter()
+    
+    Flow = FlowLoss(opt).cuda()
+
+    writer = SummaryWriter(comment = "_" + opt.naming)
+
+    # write options in text file
+    if not os.path.exists("./options"): os.mkdir("./options")	
+    f = open("./options/{}.txt".format(opt.naming), "w")
+    temp_opt = vars(opt)
+    for key in temp_opt:
+       val = temp_opt[key]
+       f.write("{} --- {}\n".format(key, val))
+    f.close()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             inputs = train_loader.next_batch()
 
-            con_cloth = inputs['cloth'].to(opt.gpu)
-            con_cloth_mask = inputs['cloth_mask'].to(opt.gpu)
-            tar_cloth = inputs['crop_cloth'].to(opt.gpu)
-            tar_cloth_mask = inputs['crop_cloth_mask'].to(opt.gpu)
-            
-            writer.add_image("con_cloth", con_cloth, cnt, dataformats="NCHW")
-            writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
-            writer.add_image("tar_cloth", tar_cloth, cnt, dataformats="NCHW")
-            writer.add_image("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
+            con_cloth = inputs['cloth'].cuda()
+            con_cloth_mask = inputs['cloth_mask'].cuda()
+            tar_cloth = inputs['crop_cloth'].cuda()
+            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
 
-            F, warp_cloth, warp_mask = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
 
             writer.add_image("warp_cloth", warp_cloth, cnt, dataformats="NCHW")
-            writer.add_image("warp_cloth_mask", warp_mask, cnt, dataformats="NCHW")
+            writer.add_image("warp_mask", warp_mask, cnt, dataformats="NCHW")
 
             optimizer.zero_grad()
             loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
             loss.backward()
             optimizer.step()
-
+            
             writer.add_scalar("loss/roi_perc", roi_perc, cnt)
             writer.add_scalar("loss/struct", struct, cnt)
             writer.add_scalar("loss/smt", smt, cnt)
+            writer.add_scalar("loss/total", loss, cnt)
             writer.close()
 
             if (step + 1) % opt.save_count == 0:
