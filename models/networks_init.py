@@ -14,9 +14,6 @@ from models.loss import *
 DEBUG = False
 MAX_CH = 256
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
-
-
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
 	return nn.Sequential(
 		nn.Conv2d(in_channels, out_channels, kernel_size,
@@ -123,7 +120,7 @@ class STN(nn.Module):
 			nn.Linear(input, 32),
 			nn.ReLU(True),
 			nn.Linear(32, 3*2)
-			).to(device)
+			)
 
 	def forward(self, x, flow):
 		flow = flow.reshape(flow.shape[0], flow.shape[2],
@@ -146,18 +143,12 @@ class FPN(nn.Module):
 			print("self.ch: {}".format(self.ch))
 
 		# encoding layer - left to right
-		self.conv = []
-		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i], i).to(device))
-
-		self.toplayer = deconv(
-		    self.ch[-1]*2, 256, kernel_size=2, padding=0).to(device)
+		self.conv = nn.ModuleList([BasicBlock(self.ch[i], i) for i in range(self.N)])
+		
+		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0)
 
 		# decoding layer - left to right
-		self.deconv = []
-		for i in range(self.N-1):
-			self.deconv.append(
-			    deconv(self.ch[-1-i], 256, kernel_size=4, padding=1).to(device))
+		self.deconv = nn.ModuleList([deconv(self.ch[-1-i], 256, kernel_size=4, padding=1) for i in range(self.N - 1)])
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
@@ -196,29 +187,28 @@ class FlowNet(nn.Module):
 				self.src.append(2**(i+5))  # start with 32
 				self.tar.append(2**(i+5))  # start with 32
 
-		self.SourceFPN = FPN(self.N, self.src).to(device)
-		self.TargetFPN = FPN(self.N, self.tar).to(device)
+		self.SourceFPN = FPN(self.N, self.src)
+		self.TargetFPN = FPN(self.N, self.tar)
 
         # list for Warp - left to right
-		self.stn = []
+		self.stn = nn.ModuleList()
 		for i in range(self.N):
-			L = STN(2).to(device)
+			L = STN(2)
 			init_weights(L, 'xavier')
 			self.stn.append(L)
 
 		# E layer - left to right
-		self.E = []
+		self.E = nn.ModuleList()
 		for i in range(self.N):
-			L = predict_flow(MAX_CH * 2).to(device)
+			L = predict_flow(MAX_CH * 2)
 			init_weights(L, 'xavier')
 			self.E.append(L)
 
-		self.upsample = nn.Upsample(scale_factor=2, mode="nearest").to(device)
+		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
 
 	def forward(self, src, tar):
 		# input source,target image
-
 		src_conv = self.SourceFPN(src) #[W, H, C]
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
@@ -301,7 +291,7 @@ def weights_init_kaiming(m):
 
 
 def init_weights(net, init_type='normal'):
-    print('initialization method [%s]' % init_type)
+    # print('initialization method [%s]' % init_type)
     if init_type == 'normal':
         net.apply(weights_init_normal)
     elif init_type == 'xavier':

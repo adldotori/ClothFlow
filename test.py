@@ -10,11 +10,12 @@ import numpy as np
 from models.networks import *
 from dataloader_viton import *
 import argparse
+from torch.nn import DataParallel as DP
 
 INPUT_SIZE = (192, 256)
-PYRAMID_HEIGHT = 4
+PYRAMID_HEIGHT = 5
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -67,6 +68,8 @@ def save_images(img_tensors, img_names, save_dir):
 
 def test(opt):
     model = FlowNet(PYRAMID_HEIGHT, 4, 1)
+    model = torch.nn.DataParallel(model)
+
     load_checkpoint(model, opt.checkpoint)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     test_dataset = CFDataset(opt)

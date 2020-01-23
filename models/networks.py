@@ -13,7 +13,7 @@ from models.loss import *
 DEBUG = False
 MAX_CH = 256
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """
 Two feature pyramid networks - source FPN, target FPN

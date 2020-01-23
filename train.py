@@ -7,10 +7,17 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from models.networks import *
+from models.networks_init import *
 from dataloader_viton import *
 import argparse
 from tqdm import tqdm
+# import torch.utils.data.distributed as DD
+# from torch.nn.parallel import DistributedDataParallel as DDP
+# from apex.parallel import DistributedDataParallel as DDP
+from torch.nn import DataParallel as DP
+# import horovod.torch as hvd
+# import torch.distributed as dist
+# from torch.multiprocessing import Process
 
 from tensorboardX import SummaryWriter
 
@@ -18,14 +25,16 @@ INPUT_SIZE = (192, 256)
 EPOCHS = 10
 PYRAMID_HEIGHT = 5
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+os.environ["CUDA_VISIBLE_DEVICES"] = '1,2,3'
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
-    parser.add_argument('-j', '--workers', type=int, default=1)
+    parser.add_argument('-j', '--workers', type=int, default=4)
     parser.add_argument('-b', '--batch-size', type=int, default=1)
+    parser.add_argument('--local_rank', type=int, default=0)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/train/")
     parser.add_argument("--datamode", default = "")
@@ -49,20 +58,30 @@ def get_opt():
 
 def save_checkpoint(model, save_path):
     if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
+        try:
+            os.makedirs(os.path.dirname(save_path))
+        except:
+            pass
 
     torch.save(model.cpu().state_dict(), save_path)
-    model.to(device)
 
 def train(opt):
-    model = FlowNet(PYRAMID_HEIGHT, 4, 1)
+    opt.world_size = 1
+    opt.gpu = opt.local_rank
+    torch.cuda.set_device(opt.gpu)
+    # dist.init_process_group(backend='nccl', init_method='env://')
+    # opt.world_size = torch.distributed.get_world_size()
+
+    model = FlowNet(PYRAMID_HEIGHT, 4, 1).to(opt.gpu)
+    model = DP(model)
+    # model = DDP(model, delay_allreduce=True)
+    # model.train()
+    Flow = FlowLoss().to(opt.gpu)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
-
-    model.to(device)
-    model.train()
-    Flow = FlowLoss().to(device)
 
     writer = SummaryWriter()
 
@@ -71,11 +90,11 @@ def train(opt):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             inputs = train_loader.next_batch()
 
-            con_cloth = inputs['cloth'].to(device)
-            con_cloth_mask = inputs['cloth_mask'].to(device)
-            tar_cloth = inputs['crop_cloth'].to(device) 
-            tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
-
+            con_cloth = inputs['cloth'].to(opt.gpu)
+            con_cloth_mask = inputs['cloth_mask'].to(opt.gpu)
+            tar_cloth = inputs['crop_cloth'].to(opt.gpu)
+            tar_cloth_mask = inputs['crop_cloth_mask'].to(opt.gpu)
+            
             writer.add_image("con_cloth", con_cloth, cnt, dataformats="NCHW")
             writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
             writer.add_image("tar_cloth", tar_cloth, cnt, dataformats="NCHW")
@@ -98,6 +117,7 @@ def train(opt):
 
             if (step + 1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'Epoch:%d_%05d.pth' % (epoch, (step+1))))
+                model.to(opt.gpu)
 
 if __name__ == '__main__':
     opt = get_opt()

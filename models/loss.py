@@ -82,9 +82,9 @@ class FlowLoss(nn.Module):
         self.l1_loss = nn.L1Loss()
         self.vgg_loss = VGGLoss()
 
-        self.lambda_struct = 30
-        self.lambda_smt = 1
-        self.lambda_roi = 3
+        self.lambda_struct = 10
+        self.lambda_smt = 2
+        self.lambda_roi = 1
 	
     def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth):
         _loss_roi_perc = self.loss_roi_perc(
