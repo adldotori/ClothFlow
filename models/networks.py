@@ -124,8 +124,7 @@ class STN(nn.Module):
 			)
 
 	def forward(self, x, flow):
-		flow = flow.reshape(flow.shape[0], flow.shape[2],
-		                    flow.shape[3], flow.shape[1])
+		flow = flow.transpose(1, 2).transpose(2, 3)
 		x = F.grid_sample(x, flow)
 		return x
 
