@@ -4,16 +4,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+
 from torch.nn import init
-
+from matplotlib import pyplot as plt
 from torch.autograd import Variable
-from torchvision import models
+from torchvision import models, transforms
 
-from models.loss import *
+from models.loss_a import *
 
-DEBUG = False
+DEBUG = False 
 MAX_CH = 256
-SMOOTH = False 
+SMOOTH = True 
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
 	return nn.Sequential(
@@ -23,21 +24,9 @@ def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1
 		)
 
 
-def deconv(in_channels, out_channels, kernel_size=4, padding=1, activation="relu"):
-	if activation == "leaky":
-		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels,
-				                   kernel_size=kernel_size, stride=2, padding=padding, bias=True),
-				nn.LeakyReLU(0.1, inplace=True)
-				)
-	else:
-		return nn.Sequential(
-				nn.ConvTranspose2d(in_channels, out_channels,
-				                   kernel_size=kernel_size, stride=2, padding=padding, bias=True),
-				nn.ReLU()
-				)
-
-
+def deconv(in_channels, out_channels, kernel_size=1, padding=1):
+	return nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+	
 def upconv(in_channels, out_channels, mode="transpose"):
 	if mode == "transpose":
 		return nn.ConvTranspose2d(
@@ -76,11 +65,18 @@ class BasicBlock(nn.Module):
 		if (i == 0):
 			self.conv_block1 = conv(c_num, 64, 2, bias=use_bias, norm_layer=norm_layer)
 			self.conv_block2 = conv(64, 64, 1, bias=use_bias, norm_layer=norm_layer)
+		
+		elif (c_num == 256):
+			self.conv_block1 = conv(
+					c_num, c_num, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(
+					c_num, c_num, 1, bias=use_bias, norm_layer=norm_layer)
+		
 		else:
 			self.conv_block1 = conv(
-			    c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
-			self.conv_block2 = conv(c_num*2, c_num*2, 1,
-			                        bias=use_bias, norm_layer=norm_layer)
+					c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
+			self.conv_block2 = conv(
+					c_num*2, c_num*2, 1, bias=use_bias, norm_layer=norm_layer)
 
 		if activation == "leaky":
 			self.activation = nn.LeakyReLU(0.1, inplace=True)
@@ -97,8 +93,6 @@ class BasicBlock(nn.Module):
 """
 class for Spatial Transformer Network
 """
-
-
 class STN(nn.Module):
 	# NEED to check channel number ==> output should be 3*2
 	def __init__(self, input_ch):
@@ -124,16 +118,16 @@ class STN(nn.Module):
 			)
 
 	def forward(self, x, flow):
-		flow = flow.transpose(1, 2).transpose(2, 3)
-		x = F.grid_sample(x, flow)
+		flow = flow.transpose(1,2).transpose(2,3)
+		# F.interpolate(flow, (flow.shape[0], flow.shape[1], 16 * flow.shape[2], 16 * flow.shape[3]), mode='bilinear')
+		# print('shape of flow is {}'.format(flow.shape))
+		x = F.grid_sample(x, flow, padding_mode="border")
 		return x
 
 
 """
 class for Feature Pyramid Networks
 """
-
-
 class FPN(nn.Module):
 	def __init__(self, N, ch_list):
 		super(FPN, self).__init__()
@@ -147,23 +141,22 @@ class FPN(nn.Module):
 		for i in range(self.N):
 			self.conv.append(BasicBlock(self.ch[i], i))
 
-		self.toplayer = deconv(
-		    self.ch[-1]*2, 256, kernel_size=2, padding=0)
+		self.toplayer = deconv(self.ch[-1], 256)
 
 		# decoding layer - left to right
 		self.deconv = []
 		for i in range(self.N-1):
-			self.deconv.append(
-			    deconv(self.ch[-1-i], 256, kernel_size=4, padding=1))
+			self.deconv.append(deconv(self.ch[-1-i], 256))
 		self.conv = nn.ModuleList(self.conv)
 		self.deconv = nn.ModuleList(self.deconv)
-
+		
 		# smoothing layer - reduce upsampling aliasing effect
-		self.smooth = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+		if SMOOTH:
+			self.smooth = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
-		return F.upsample(x, size=(H, W), mode="bilinear") + y
+		return F.upsample(x, size=(H, W), mode="nearest") + y
 
 	def forward(self, input):
 		encoder = []
@@ -172,12 +165,18 @@ class FPN(nn.Module):
 		encoder.append(input)
 		for i in range(self.N):
 			encoder.append(self.conv[i](encoder[-1]))
+			if DEBUG:
+				print('shape of encoder is {}'.format(encoder[-1].shape))
 
 		decoder.append(self.toplayer(encoder[-1]))
+		if DEBUG:
+			print('shape of decoder is {}'.format(decoder[-1].shape))
 
 		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[- 2 - i]))
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[-2-i]))
 			decoder.append(x)
+			if DEBUG:
+				print('shape of decoder is {}'.format(decoder[-1].shape))
 
 		if SMOOTH:
 			_smooth = []
@@ -203,8 +202,8 @@ class FlowNet(nn.Module):
 				self.src.append(src_ch)
 				self.tar.append(tar_ch)
 			else:
-				self.src.append(2**(i+5))  # start with 32
-				self.tar.append(2**(i+5))  # start with 32
+				self.src.append(min(256, 2**(i+5)))  # start with 32
+				self.tar.append(min(256, 2**(i+5)))  # start with 32
 
 		self.SourceFPN = FPN(self.N, self.src)
 		self.TargetFPN = FPN(self.N, self.tar)
@@ -227,6 +226,23 @@ class FlowNet(nn.Module):
 		self.stn = nn.ModuleList(self.stn)
 		self.E = nn.ModuleList(self.E)
 
+	def plot_kernels(self, tensor):
+		# Normalize
+		maxVal = tensor.max()
+		minVal = abs(tensor.min())
+		maxVal = max(maxVal, minVal)
+		tensor = tensor / maxVal
+		tensor = tensor / 2
+		tensor = tensor + 0.5
+
+		num_cols = 6
+		num_rows = 1 + tensor.shape[0]
+		fig = plt.figure(figsize=(num_cols, num_rows))
+		i = 0
+		for t in tensor:
+			pilTrans = transforms.ToPILImage()
+			pilImg = pilTrans(t)
+		return t 
 
 	def forward(self, src, tar):
 		# input source,target image
@@ -235,7 +251,6 @@ class FlowNet(nn.Module):
 		tar_conv = self.TargetFPN(tar) #[W, H, C]
 
 		# concat for E4 to E1
-
 		self.F = []
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
 		for i in range(self.N - 1):
@@ -243,22 +258,22 @@ class FlowNet(nn.Module):
 			warp = self.stn[i](src_conv[i+1], upsample_F)  
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
-
-		# last_F = self.upsample(self.F[-1])
-		if DEBUG:
-			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
-		self.result = self.stn[-1](src, self.F[-1])
+	
+		last_F = self.upsample(self.F[-1])
+		self.result = self.stn[-1](src, last_F)
 
 		self.warp_cloth = self.result[:, :3, :, :]
 		self.warp_mask = self.result[:, 3:4, :, :]
 		self.tar_mask = tar
 
+		self.result_list = [self.result]
+		for i in range(self.N-1):
+			self.result_list.append(self.stn[-i-2](src, self.F[-i-1])) 
+
 		if DEBUG:
 			print("**********shape of cloth: {}, shape of mask: {}***********".format(self.warp_cloth.shape, self.warp_mask.shape))
 
-		return self.F, self.warp_cloth, self.warp_mask
-
-
+		return self.F, self.warp_cloth, self.warp_mask, self.result_list
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
@@ -272,7 +287,6 @@ def test_FlowNet():
 def test():
 	net = test_FlowNet()
 	fms = net(Variable(torch.randn(1, 4, 192, 256)), Variable(torch.randn(1, 1, 192, 256)))
-
 
 
 
@@ -324,10 +338,6 @@ def init_weights(net, init_type='normal'):
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
 
-
-###################################
-######## Weight initialize ########
-###################################
 
 if __name__ == "__main__":
 	test()
