@@ -10,11 +10,11 @@ from matplotlib import pyplot as plt
 from torch.autograd import Variable
 from torchvision import models, transforms
 
-from models.loss_a import *
+from models.loss import *
 
 DEBUG = False 
 MAX_CH = 256
-SMOOTH = True 
+SMOOTH = False 
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
 	return nn.Sequential(
@@ -141,7 +141,7 @@ class FPN(nn.Module):
 		for i in range(self.N):
 			self.conv.append(BasicBlock(self.ch[i], i))
 
-		self.toplayer = deconv(self.ch[-1], 256)
+		self.toplayer = deconv(256, 256)
 
 		# decoding layer - left to right
 		self.deconv = []
@@ -268,12 +268,12 @@ class FlowNet(nn.Module):
 
 		self.result_list = [self.result]
 		for i in range(self.N-1):
-			self.result_list.append(self.stn[-i-2](src, self.F[-i-1])) 
+			self.result_list.append(self.stn[-i-2](src, self.F[-i-2])) 
 
 		if DEBUG:
 			print("**********shape of cloth: {}, shape of mask: {}***********".format(self.warp_cloth.shape, self.warp_mask.shape))
 
-		return self.F, self.warp_cloth, self.warp_mask, self.result_list
+		return self.F, self.warp_cloth, self.warp_mask, self.result_list 
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
