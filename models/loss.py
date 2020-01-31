@@ -1,9 +1,63 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from skimage import transform
 from torchvision import models
 from torch.autograd import Variable
+import numpy as np
+
+def get_A(bs, H, W):
+    A = np.array([[[1,0,0],[0,1,0]]]).astype(np.float32)
+    A = np.concatenate([A]*bs,0)
+    A = torch.from_numpy(A)
+    net = nn.functional.affine_grid(A,(bs,2,H,W)).cuda()
+    net = net.transpose(2,3).transpose(1,2)
+    return net
+
+
+def Zscore(flow,func,scm,wcm,eps=1e-6):
+    """
+    input : flow -> distribution to test, c -> condition distribution, scm -> src mask, wcm -> warped mask
+    size : flow -> (B,2,192*256), func -> function of x and y, scm,wcm -> (B,1,256,192) (bool-like type)
+    e.g. func = lambda x,y: x**2 + y**2 where x and y are tensor of which size is (B,256*192) and
+    output size is (B,256*192)
+    output-size : (B,)
+    """
+    B,C,H,W = scm.shape # C = 1
+    scm = scm.view(B,H*W)
+    n_src = torch.sum(scm,axis=1) #(B,)
+    scm = scm.view(B,1,H*W)
+    scm = torch.cat([scm]*2,1) #B,2,H*W
+    A = get_A(B,256,192) # B,2,H,W
+    A = A.view(B,2,H*W) #B,2,H*W
+    CD = scm * A
+    CD_x = CD[:,0,:]
+    CD_y = CD[:,1,:]
+    expect_of_CD = torch.sum(func(CD_x,CD_y),axis=1) / (n_src+eps)
+    expect_of_CD2 = torch.sum(func(CD_x,CD_y)**2,axis=1) / (n_src+eps)
+
+    wcm = torch.eq(torch.ones(B,H*W).cuda(),wcm.view(B,H*W))
+    n_warp = torch.sum(wcm,axis=1)
+    wcm = wcm.view(B,1,H*W)
+    wcm = torch.cat([wcm]*2,1)
+    FD = flow.view(B,2,H*W) * M
+    FD_x = FD[:,0,:]
+    FD_y = FD[:,1,:]
+    expect_of_FD = torch.sum(func(FD_x,FD_y),axis=1) / (n_warp+eps)
+    z_score = (expect_of_FD - expect_of_CD)/torch.sqrt((expect_of_CD2 - expect_of_CD)/(n_warp+eps))
+    
+    return torch.abs(z_score)
+
+def absFlow(flow):
+    B,C,H,W = flow.shape # C = 2
+    A = get_A(B,H,W)
+    F = flow - A
+    F = F**2
+    F = torch.sum(F,axis=1)
+    F = torch.sqrt(F)
+    return torch.mean(F)
+
+
+
 
 class FeatureExtractor(nn.Module):
 	def __init__(self, cnn, feature_layer=11):
@@ -33,8 +87,6 @@ class VGGLoss(nn.Module):
 			return (F.adaptive_avg_pool2d(Variable(img), size)).data
 
 	def forward(self, x, y):
-#		print("X: {}".format(x))
-#		print("Y: {}".format(y))
 		x = (x+1)*0.5
 		y = (y+1)*0.5
 		x = self.resize2d(x, (256, 256))
@@ -55,63 +107,50 @@ class FlowLoss(nn.Module):
         self.lambda_struct = opt.struct_loss
         self.lambda_smt = opt.smt_loss
         self.lambda_roi = opt.perc_loss
-        self.bs = opt.batch_size
+        self.lambda_stat = opt.stat_loss
+        self.lambda_abs = opt.abs_loss
+        self.eps = 1e-5
 		  
-    def get_A(self, bs, H, W):
-        x = torch.linspace(-1, 1, H)
-        y = torch.linspace(-1, 1, W)
-        xv, yv = torch.meshgrid(x, y)
-        xv = xv.view(1,H,W)
-        yv = yv.view(1,H,W)
-        A = torch.cat((xv,yv),0)
-        A = A.view(1,2,H,W)
-        A = torch.cat([A]*bs)
-        
-        return A.cuda()
-    """
-    COMMENT: roi_perc and struct to be calculated in every layer
-    """
-
-    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth, warp_list):
+    def get_A(self,bs, H, W):
+        A = np.array([[[1,0,0],[0,1,0]]]).astype(np.float32)
+        A = np.concatenate([A]*bs,0)
+        A = torch.from_numpy(A)
+        net = nn.functional.affine_grid(A,(bs,2,H,W)).cuda()
+        net = net.transpose(2,3).transpose(1,2)
+        return net
+	
+    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask):
         _loss_roi_perc = self.loss_roi_perc(
             warp_mask, warp_cloth, tar_mask, tar_cloth)
-        
-        """
-        _loss_roi_perc = 0.0
-        for i in range(N):
-            _loss_roi_perc += self.loss_roi_perc(warp_list[i][:, 3:4, :, :], warp_list[i][:, :3, :, :], tar_mask, tar_cloth)
-        """		 
-
-        """ 
-        _loss_struct = 0.0
-        for i in range(N):
-            _loss_struct += self.loss_struct(warp_list[i][:, 3:4, :, :], tar_mask)
-        """
         _loss_struct = self.loss_struct(warp_mask, tar_mask)
-
         _loss_smt = self.loss_smt(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]))
         for i in range(N-1):
             _loss_smt += self.loss_smt(F[i+1]-self.get_A(F[i+1].shape[0], F[i+1].shape[2], F[i+1].shape[3]))
+        
+        if self.lambda_stat == -1:
+            _loss_stat = torch.tensor(0)
+        else:
+            _loss_stat = self.stat_loss(F[-1],src_mask,warp_mask)
 
-        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt
+        if self.lambda_abs == -1:
+            _loss_abs = torch.tensor(0)
+        else:
+            _loss_abs = absFlow(F[-1])
 
-    def loss_struct(self, src, tar):
-        """
-        _tar = tar.transpose(0, 1).transpose(1, 2).transpose(2, 3)
-        _tar = transform.resize(_tar.cpu().reshape(tar.shape[-2], tar.shape[-1], -1), (src.shape[-2], src.shape[-1]))
-        _tar = _tar.reshape(src.shape[-2], src.shape[-1], 1, -1)
-        _tar = torch.tensor(_tar)
-        tar = _tar.transpose(2, 3).transpose(1, 2).transpose(0, 1)
-        tar = tar.transpose(2, 3).transpose(1, 2).cuda()
-        """
+        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat + self.lambda_abs * _loss_abs , _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, _loss_stat,_loss_abs
+
+    def loss_struct(self, src, tar,version="MS"):
+        if version == "MS":
+            return torch.mean(torch.abs(F.leaky_relu(tar-src,0.1764)))
+        if version =="Original":
+            return self.l1_loss(src, tar)
         return self.l1_loss(src, tar)
 
     def loss_detail(self, src, tar):
         return self.l2_loss(src, tar)
 
     def loss_roi_perc(self, src_mask, src_cloth, tar_mask, tar_cloth):
-#        tar_mask.resize(src_mask.shape)
-#        tar_cloth.resize(src_mask.shape)
+#       print("src_cloth: {}, tar_cloth: {}".format(src_cloth, tar_cloth))
         ex_src_mask = src_mask.repeat(1, 3, 1, 1)
         ex_tar_mask = tar_mask.repeat(1, 3, 1, 1)
         return self.vgg_loss(ex_src_mask*src_cloth, ex_tar_mask*tar_cloth)
@@ -120,4 +159,92 @@ class FlowLoss(nn.Module):
         return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
 				  torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))) / (mat.shape[2] * mat.shape[3])
 
+    def ClothDistribution(self,scm):
+        """
+        input : source cloth mask -> B,1,H,W
+        output : tensor of expectation of x,y,x2,y2,x4,y4,xy,x2y2,xy2,x2y,x2y4,x4y2
+                    size : B*12
+        """
+        #result = []
+        eps = self.eps
+        B,C,H,W = scm.shape # C = 1
+        scm = scm.view(B,H*W)
+        n = torch.sum(scm,axis=1) #(B,)
+        scm = scm.view(B,1,H*W)
+        scm = torch.cat([scm]*2,1) #B,2,H*W
+        A = self.get_A(B,256,192) # B,2,H,W
+        A = A.view(B,2,H*W) #B,2,H*W
+        #print(scm.shape,A.shape)
+        CD = scm * A
+        x_ = torch.sum(CD[:,0,:],axis=1) / n
+        y_ = torch.sum(CD[:,1,:],axis=1) / n
+        x_ = x_.view(-1,1)
+        y_ = y_.view(-1,1)
+        result = torch.cat([x_,y_],axis=1)
+        x2_ = torch.sum(CD[:,0,:]**2,axis=1) / n
+        y2_ = torch.sum(CD[:,1,:]**2,axis=1) / n
+        x2_ = x2_.view(-1,1)
+        y2_ = y2_.view(-1,1)
+        result = torch.cat([result,x2_,y2_],axis=1)
+        x4_ = torch.sum(CD[:,0,:]**4,axis=1) / n
+        y4_ = torch.sum(CD[:,1,:]**4,axis=1) / n
+        x4_ = x4_.view(-1,1)
+        y4_ = y4_.view(-1,1)
+        result = torch.cat([result,x4_,y4_],axis=1)
+        xy_ = torch.sum(CD[:,0,:]*CD[:,1,:],axis=1) / n
+        xy_ = xy_.view(-1,1)
+        x2y2_ = torch.sum((CD[:,0,:]**2)*(CD[:,1,:]**2),axis=1) / n
+        x2y2_ = x2y2_.view(-1,1)
+        result = torch.cat([result,xy_,x2y2_],axis=1)
+        xy2_ = torch.sum((CD[:,0,:])*(CD[:,1,:]**2),axis=1) / n
+        x2y_ = torch.sum((CD[:,0,:]**2)*(CD[:,1,:]),axis=1) / n
+        xy2_ = xy2_.view(-1,1)
+        x2y_ = x2y_.view(-1,1)
+        result = torch.cat([result,xy2_,x2y_],axis=1)
+        x2y4_ = torch.sum((CD[:,0,:]**2)*(CD[:,1,:]**4),axis=1) / n
+        x4y2_ = torch.sum((CD[:,0,:]**4)*(CD[:,1,:]**2),axis=1) / n
+        x2y4_ = x2y4_.view(-1,1)
+        x4y2_ = x4y2_.view(-1,1)
+        result = torch.cat([result,x2y4_,x4y2_],axis=1)
+        return result
+
+    def stat_loss(self,Final_F,scm,warp_mask):
+        eps = self.eps
+        B,C,H,W = warp_mask.shape # C = 1
+        M = torch.eq(torch.ones(B,H*W).cuda(),warp_mask.view(B,H*W))
+        #M = M.view(B,H*W)
+        n = torch.sum(M,axis=1) #(B,)
+        M = M.view(B,1,H*W)
+        M = torch.cat([M]*2,1) #B,2,H*W
+        FD = Final_F.view(B,2,H*W) * M
+        CD = self.ClothDistribution(scm)
+        x_ = torch.sum(FD[:,0,:],axis=1) / n
+        y_ = torch.sum(FD[:,1,:],axis=1) / n
+        x_ = x_.view(-1,1)
+        y_ = y_.view(-1,1)
+        x2_ = torch.sum(FD[:,0,:]**2,axis=1) / n
+        y2_ = torch.sum(FD[:,1,:]**2,axis=1) / n
+        x2_ = x2_.view(-1,1)
+        y2_ = y2_.view(-1,1)
+        xy_ = torch.sum(FD[:,0,:]*FD[:,1,:],axis=1) / n
+        xy_ = xy_.view(-1,1)
+        xy2_ = torch.sum((FD[:,0,:])*(FD[:,1,:]**2),axis=1) / n
+        x2y_ = torch.sum((FD[:,0,:]**2)*(FD[:,1,:]),axis=1) / n
+        xy2_ = xy2_.view(-1,1)
+        x2y_ = x2y_.view(-1,1)
+        #print(n,torch.sqrt((CD[:,2]-CD[:,0]**2)/n),torch.sqrt((CD[:,3]-CD[:,1]**2)/n),torch.sqrt((CD[:,10]-CD[:,8]**2)/n))
+        if torch.sum(((CD[:,2]-CD[:,0]**2) < 0) | ((CD[:,3]-CD[:,1]**2) < 0) | ((CD[:,4]-CD[:,2]**2) < 0)  | ((CD[:,5]-CD[:,3]**2) < 0) | ((CD[:,7]-CD[:,6]**2) < 0) | ((CD[:,10]-CD[:,8]**2) < 0) | ((CD[:,11]-CD[:,9]**2) < 0)) > 0:
+            print("Negative error")
+        Dx = torch.pow((x_ - CD[:,0])/(torch.sqrt((CD[:,2]-CD[:,0]**2)/(n+eps))+eps),2)
+        Dy = torch.pow((y_ - CD[:,1])/(torch.sqrt((CD[:,3]-CD[:,1]**2)/(n+eps))+eps),2)
+        Dx2 = torch.pow((x2_ - CD[:,2])/(torch.sqrt((CD[:,4]-CD[:,2]**2)/(n+0.3*eps))+0.3*eps),2)
+        Dy2 = torch.pow((y2_ - CD[:,3])/(torch.sqrt((CD[:,5]-CD[:,3]**2)/(n+0.3*eps))+0.3*eps),2)
+        Dxy = torch.pow((xy_ - CD[:,6])/(torch.sqrt((CD[:,7]-CD[:,6]**2)/(n+0.3*eps))+0.3*eps),2)
+        Dxy2 = torch.pow((xy2_ - CD[:,8])/(torch.sqrt((CD[:,10]-CD[:,8]**2)/(n+0.1*eps))+0.1*eps),2)
+        Dx2y = torch.pow((x2y_ - CD[:,9])/(torch.sqrt((CD[:,11]-CD[:,9]**2)/(n+0.1*eps))+0.1*eps),2)
+        return torch.mean(Dx + Dy + Dx2 + Dy2 + Dxy + Dxy2 + Dx2y)
         
+
+
+
+

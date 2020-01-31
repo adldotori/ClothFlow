@@ -20,13 +20,12 @@ EPOCHS = 15
 PYRAMID_HEIGHT = 5
 
 
-
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=12)
+    parser.add_argument('-b', '--batch_size', type=int, default=8)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/train/")
     parser.add_argument("--datamode", default = "")
@@ -42,14 +41,16 @@ def get_opt():
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
     parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
-    parser.add_argument("--save_count", type=int, default = 500)
+    parser.add_argument("--save_count", type=int, default = 50)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
     parser.add_argument("--smt_loss", type=float, default=2)
     parser.add_argument("--perc_loss", type=float, default=1)
-    parser.add_argument("--struct_loss", type=float, default=10)
+    parser.add_argument("--struct_loss", type=float, default=10) # 1.7*10
+    parser.add_argument("--stat_loss", type=float, default=0) 
+    parser.add_argument("--abs_loss", type=float, default=0)
+    parser.add_argument("--save_dir", type=str, default="None")
     parser.add_argument("--naming", type=str, default="default")
-    parser.add_argument("--save_dir", type=str, default="NONE")
 
     opt = parser.parse_args()
     return opt
@@ -113,25 +114,25 @@ def train(opt):
             writer.add_images("tar_cloth", tar_cloth, cnt)
             writer.add_images("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
 
-            [F, warp_cloth, warp_mask, warp_list] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
+            [F, warp_cloth, warp_mask, result_first] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
 
             writer.add_images("warp_cloth", warp_cloth, cnt)
             writer.add_images("warp_mask", warp_mask, cnt, dataformats="NCHW")
-            writer.add_images("warp_first", warp_list[1][:, :3, :, :], cnt)
             
             if step % opt.save_count == 0 and opt.save_dir != "NONE":
                _dir = os.path.join(opt.save_dir, opt.naming, str(epoch)+"_"+str(step))
                if not os.path.exists(_dir): 
                    os.makedirs(_dir)
-               warp_flow = F[-1]
-               numpy_warp_flow = warp_flow.data[0].detach().cpu().clone().numpy()
-               np.save(_dir, numpy_warp_flow)
+#               warp_flow = nn.Upsample(scale_factor=2, mode="nearest")(F[-1])
+#               numpy_warp_flow = warp_flow.data[0].detach().cpu().clone().numpy()
+               numpy_warp_flow = F[-1].detach().cpu().clone().numpy()
+               np.save(os.path.join(_dir,"np.npy"), numpy_warp_flow)
                save_image(warp_cloth[0], os.path.join(_dir, "warp.png"))
                save_image(tar_cloth[0], os.path.join(_dir, "target.png"))
                save_image(con_cloth[0], os.path.join(_dir, "source.png"))
 					
             optimizer.zero_grad()
-            loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, warp_list)
+            loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
             loss.backward()
             optimizer.step()
 
@@ -149,7 +150,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.naming, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "2"
 
     opt = get_opt()
     train(opt)
