@@ -25,7 +25,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=8)
+    parser.add_argument('-b', '--batch_size', type=int, default=12)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/train/")
     parser.add_argument("--datamode", default = "")
@@ -150,7 +150,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.naming, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "2"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "1"
 
     opt = get_opt()
     train(opt)

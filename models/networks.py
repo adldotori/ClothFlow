@@ -12,7 +12,7 @@ from torchvision import models, transforms
 
 from models.loss import *
 
-DEBUG = False
+DEBUG = False 
 MAX_CH = 256
 SMOOTH = False 
 
@@ -221,8 +221,7 @@ class FlowNet(nn.Module):
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
-		last_F = self.upsample(self.F[-1])
-		self.result = self.stn(src, last_F)
+		self.result = self.stn(src, self.F[-1])
 
 		self.warp_cloth = self.result[:, :3, :, :]
 		self.warp_mask = self.result[:, 3:4, :, :]
