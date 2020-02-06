@@ -4,25 +4,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import gc
-
 from torch.nn import init
-from matplotlib import pyplot as plt
+
 from torch.autograd import Variable
-from torchvision import models, transforms
+from torchvision import models
+
 from models.loss import *
 
-DEBUG = False 
-MAX_CH = 120
-SMOOTH = False 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-"""
-Two feature pyramid networks - source FPN, target FPN
-N encoding layers => downsample conv with stride 2 followed by one residual block
-N = 4 or 5
-"""
+DEBUG = False
+MAX_CH = 256
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
 	return nn.Sequential(
@@ -106,45 +96,59 @@ class BasicBlock(nn.Module):
 """
 class for Spatial Transformer Network
 """
+
+
 class STN(nn.Module):
 	# NEED to check channel number ==> output should be 3*2
 	def __init__(self, input_ch):
 		super(STN, self).__init__()
-	
+		# localization network
+		self.localization = nn.Sequential(
+			conv(input_ch, 8, 1, kernel_size=7),
+			nn.MaxPool2d(2, stride=2),
+			nn.ReLU(True),
+			conv(8, 10, 1, kernel_size=5),
+			nn.MaxPool2d(2, stride=2),
+			nn.ReLU(True)
+		)
+
+		# Regressor for the 3*2 affine matrix
+		self.fc_loc = None
+
+	def _fc_loc(self, input):
+		return nn.Sequential(
+			nn.Linear(input, 32),
+			nn.ReLU(True),
+			nn.Linear(32, 3*2)
+			)
+
 	def forward(self, x, flow):
-		flow = flow.transpose(1,2).transpose(2,3)
-		x = F.grid_sample(x, flow, padding_mode="border")
+		flow = flow.reshape(flow.shape[0], flow.shape[2],
+		                    flow.shape[3], flow.shape[1])
+		x = F.grid_sample(x, flow)
 		return x
 
 
 """
 class for Feature Pyramid Networks
 """
+
+
 class FPN(nn.Module):
 	def __init__(self, N, ch_list):
 		super(FPN, self).__init__()
 		self.N = N
 		self.ch = ch_list
+		if DEBUG:
+			print("self.ch: {}".format(self.ch))
 
 		# encoding layer - left to right
-		self.conv = []
-		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i], i))
-
-		self.toplayer = deconv(
-		    self.ch[-1]*2, MAX_CH, kernel_size=2, padding=0)
+		self.conv = nn.ModuleList([BasicBlock(self.ch[i], i) for i in range(self.N)])
+		
+		self.toplayer = deconv(self.ch[-1]*2, 256, kernel_size=2, padding=0)
 
 		# decoding layer - left to right
-		self.deconv = []
-		for i in range(self.N-1):
-			self.deconv.append(
-			    deconv(self.ch[-1-i], MAX_CH, kernel_size=4, padding=1))
-		self.conv = nn.ModuleList(self.conv)
-		self.deconv = nn.ModuleList(self.deconv)
-		
-		# smoothing layer - reduce upsampling aliasing effect
-		if SMOOTH:
-			self.smooth = nn.Conv2d(MAX_CH, MAX_CH, kernel_size=3, stride=1, padding=1)
+		self.deconv = nn.ModuleList([deconv(self.ch[-1-i], 256, kernel_size=4, padding=1) for i in range(self.N - 1)])
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
@@ -154,31 +158,16 @@ class FPN(nn.Module):
 		encoder = []
 		decoder = []
 
+		encoder.append(input)
 		for i in range(self.N):
-			encoder.append(self.conv[i](input if i==0 else encoder[-1]))
-			if DEBUG:
-				print('shape of encoder is {}'.format(encoder[-1].shape))
+			encoder.append(self.conv[i](encoder[-1]))
 
 		decoder.append(self.toplayer(encoder[-1]))
-		if DEBUG:
-			print('shape of decoder is {}'.format(decoder[-1].shape))
-		del encoder[-1]
-		gc.collect()
-		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[-1]))
-			decoder.append(x)
-			del encoder[-1]
-			if DEBUG:
-				print('shape of decoder is {}'.format(decoder[-1].shape))
 
-		if SMOOTH:
-			_smooth = []
-			_smooth.append(decoder[0])
-			for i in range(self.N-1):
-				_smooth.append(self.smooth(decoder[i+1]))
-			return _smooth
-		else:
-			return decoder
+		for i in range(self.N-1):
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[self.N - 1 - i]))
+			decoder.append(x)
+		return decoder
 
 
 class FlowNet(nn.Module):
@@ -202,43 +191,51 @@ class FlowNet(nn.Module):
 		self.TargetFPN = FPN(self.N, self.tar)
 
         # list for Warp - left to right
-		L = STN(2)
-		init_weights(L, 'xavier')
-		self.stn = L
-	
+		self.stn = nn.ModuleList()
+		for i in range(self.N):
+			L = STN(2)
+			init_weights(L, 'xavier')
+			self.stn.append(L)
 
 		# E layer - left to right
-		self.E = []
+		self.E = nn.ModuleList()
 		for i in range(self.N):
 			L = predict_flow(MAX_CH * 2)
 			init_weights(L, 'xavier')
 			self.E.append(L)
 
 		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
-		self.E = nn.ModuleList(self.E)
-	
+
+
 	def forward(self, src, tar):
-		src_conv = self.SourceFPN(src)
-		tar_conv = self.TargetFPN(tar)
-		
+		# input source,target image
+		src_conv = self.SourceFPN(src) #[W, H, C]
+		tar_conv = self.TargetFPN(tar) #[W, H, C]
+
 		# concat for E4 to E1
+
 		self.F = []
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
-		
 		for i in range(self.N - 1):
 			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
-			warp = self.stn(src_conv[i+1], upsample_F)  
+			warp = self.stn[i](src_conv[i+1], upsample_F)  
 			concat = torch.cat([warp, tar_conv[i+1]], 1)
 			self.F.append(upsample_F.add(self.E[i+1](concat)))
 
-		self.result = self.stn(src, self.F[-1])
-		self.warp_cloth = self.stn(src[:,0:3,:,:], self.F[-1])
-		self.warp_mask = self.stn(src[:,3:4,:,:], self.F[-1])
+		# last_F = self.upsample(self.F[-1])
+		if DEBUG:
+			print("*******************shape of src: {}, shape of last_F: {}*****************".format(src.shape, self.F[-1].shape))
+
+		self.warp_cloth = self.stn[-1](src[:,0:3,:,:], self.F[-1])
+		self.warp_mask = self.stn[-1](src[:,3:4,:,:], self.F[-1])
 		self.tar_mask = tar
 
-		self.result_first = self.stn(src, self.upsample(self.F[-2]))
+		if DEBUG:
+			print("**********shape of cloth: {}, shape of mask: {}***********".format(self.warp_cloth.shape, self.warp_mask.shape))
 
 		return self.F, self.warp_cloth, self.warp_mask
+
+
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
@@ -252,6 +249,8 @@ def test_FlowNet():
 def test():
 	net = test_FlowNet()
 	fms = net(Variable(torch.randn(1, 4, 192, 256)), Variable(torch.randn(1, 1, 192, 256)))
+
+
 
 
 ###################################
@@ -302,6 +301,10 @@ def init_weights(net, init_type='normal'):
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
 
+
+###################################
+######## Weight initialize ########
+###################################
 
 if __name__ == "__main__":
 	test()

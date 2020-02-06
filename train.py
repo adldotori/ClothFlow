@@ -27,6 +27,7 @@ def get_opt():
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=4)
     parser.add_argument('-b', '--batch_size', type=int, default=20)
+    parser.add_argument('--local_rank', type=int, default=0)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/")
     parser.add_argument("--datamode", default = "train")
@@ -62,7 +63,6 @@ def save_checkpoint(model, save_path):
     if not os.path.exists(os.path.dirname(save_path)):
         os.makedirs(os.path.dirname(save_path))
     torch.save(model.cpu().state_dict(), save_path)
-    model.cuda()
 
 def load_checkpoint(model, checkpoint_path):
     if not os.path.exists(checkpoint_path):
@@ -78,6 +78,7 @@ def train(opt):
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
     
@@ -102,7 +103,6 @@ def train(opt):
     for epoch in range(EPOCHS):
         for step in range(len(train_loader.dataset)//opt.batch_size + 1):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
-            
             inputs = train_loader.next_batch()
 
             con_cloth = inputs['cloth'].cuda()
@@ -160,6 +160,5 @@ def train(opt):
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
-
     opt = get_opt()
     train(opt)
