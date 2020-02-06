@@ -247,7 +247,3 @@ class FlowLoss(nn.Module):
         Dx2y = torch.pow((x2y_ - CD[:,9])/(torch.sqrt((CD[:,11]-CD[:,9]**2)/(n+0.1*eps))+0.1*eps),2)
         return torch.mean(Dx + Dy + Dx2 + Dy2 + Dxy + Dxy2 + Dx2y)
         
-
-
-
-

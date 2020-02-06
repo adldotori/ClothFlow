@@ -10,11 +10,12 @@ import numpy as np
 from models.networks import *
 from dataloader_viton import *
 import argparse
+from torch.nn import DataParallel as DP
 
 INPUT_SIZE = (192, 256)
-PYRAMID_HEIGHT = 4
+PYRAMID_HEIGHT = 5
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -45,9 +46,8 @@ def get_opt():
 
 def load_checkpoint(model, checkpoint_path):
     if not os.path.exists(checkpoint_path):
-        print(error)
-        print(1/0)
-        return
+        print('[-] Checkpoint Load Error!')        
+        exit()
     model.load_state_dict(torch.load(checkpoint_path))
     model.to(device)
 
@@ -68,6 +68,8 @@ def save_images(img_tensors, img_names, save_dir):
 
 def test(opt):
     model = FlowNet(PYRAMID_HEIGHT, 4, 1)
+    model = torch.nn.DataParallel(model)
+
     load_checkpoint(model, opt.checkpoint)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     test_dataset = CFDataset(opt)
@@ -87,7 +89,7 @@ def test(opt):
 
         [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
         # optimizer.zero_grad()
-        loss = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
+        loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
         # loss.backward()
         # optimizer.step()
 
