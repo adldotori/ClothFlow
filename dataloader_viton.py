@@ -13,6 +13,8 @@ import pickle
 
 #import time
 
+INPUT_SIZE = (256, 256)
+
 def naming(file_name):
     return file_name[:-6]
 
@@ -41,15 +43,14 @@ class CFDataset(data.Dataset):
 
     def __getitem__(self, index):
 
-
         name = naming(self.image_files[index])
 
         # cloth image & cloth mask
 
         path_cloth = osp.join(self.data_path,"cloth",name+"_1.jpg")
         path_mask = osp.join(self.data_path, "cloth-mask",name+"_1.jpg")
-        cloth = Image.open(path_cloth)
-        cloth_mask = Image.open(path_mask)
+        cloth = Image.open(path_cloth).resize(INPUT_SIZE)
+        cloth_mask = Image.open(path_mask).resize(INPUT_SIZE)
 
         if self.opt.stage == "GMM":
             target_softmax_path = osp.join(self.result_dir+'/PGP', pair+'.jpg')
@@ -59,14 +60,14 @@ class CFDataset(data.Dataset):
             warped_cloth_path = osp.join(self.result_dir+'/GMM', pair+'.jpg')
             # if not os.path.exists(warped_cloth_path):
             #     print(warped_cloth_path)
-            target_softmax_shape = Image.open(target_softmax_path)
+            target_softmax_shape = Image.open(target_softmax_path).resize(INPUT_SIZE)
             target_softmax_shape = target_softmax_shape.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
             target_softmax_shape = target_softmax_shape.resize((self.fine_width, self.fine_height), Image.BILINEAR)
             target_softmax_shape = self.transform(target_softmax_shape).type(torch.float32)
 
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
 
-        image = Image.open(path_image)
+        image = Image.open(path_image).resize(INPUT_SIZE)
 
         H, W, C = np.array(image).shape###
 
@@ -83,7 +84,7 @@ class CFDataset(data.Dataset):
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0_keypoints.pkl")
 
         # segment processing
-        seg = Image.open(path_seg)
+        seg = Image.open(path_seg).resize(INPUT_SIZE)
         parse_array = np.array(seg)
 
         parse_fla = parse_array.reshape(H*W, 1)
@@ -294,8 +295,8 @@ if __name__ == "__main__":
     parser.add_argument("--datamode", default = "")
     parser.add_argument("--stage", default = "PGP")
     parser.add_argument("--data_list", default = "MVCup_pair.txt")
-    parser.add_argument("--fine_width", type=int, default = 192)
-    parser.add_argument("--fine_height", type=int, default = 256)
+    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
+    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument('-b', '--batch-size', type=int, default=4)

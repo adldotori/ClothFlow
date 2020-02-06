@@ -4,16 +4,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+import gc
 
 from torch.nn import init
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
 from torchvision import models, transforms
-
 from models.loss import *
 
 DEBUG = False 
-MAX_CH = 256
+MAX_CH = 120
 SMOOTH = False 
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
@@ -124,19 +124,19 @@ class FPN(nn.Module):
 			self.conv.append(BasicBlock(self.ch[i], i))
 
 		self.toplayer = deconv(
-		    self.ch[-1]*2, 256, kernel_size=2, padding=0)
+		    self.ch[-1]*2, MAX_CH, kernel_size=2, padding=0)
 
 		# decoding layer - left to right
 		self.deconv = []
 		for i in range(self.N-1):
 			self.deconv.append(
-			    deconv(self.ch[-1-i], 256, kernel_size=4, padding=1))
+			    deconv(self.ch[-1-i], MAX_CH, kernel_size=4, padding=1))
 		self.conv = nn.ModuleList(self.conv)
 		self.deconv = nn.ModuleList(self.deconv)
 		
 		# smoothing layer - reduce upsampling aliasing effect
 		if SMOOTH:
-			self.smooth = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+			self.smooth = nn.Conv2d(MAX_CH, MAX_CH, kernel_size=3, stride=1, padding=1)
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
@@ -146,19 +146,20 @@ class FPN(nn.Module):
 		encoder = []
 		decoder = []
 
-		encoder.append(input)
 		for i in range(self.N):
-			encoder.append(self.conv[i](encoder[-1]))
+			encoder.append(self.conv[i](input if i==0 else encoder[-1]))
 			if DEBUG:
 				print('shape of encoder is {}'.format(encoder[-1].shape))
 
 		decoder.append(self.toplayer(encoder[-1]))
 		if DEBUG:
 			print('shape of decoder is {}'.format(decoder[-1].shape))
-
+		del encoder[-1]
+		gc.collect()
 		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[-2-i]))
+			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[-1]))
 			decoder.append(x)
+			del encoder[-1]
 			if DEBUG:
 				print('shape of decoder is {}'.format(decoder[-1].shape))
 
@@ -209,12 +210,13 @@ class FlowNet(nn.Module):
 		self.E = nn.ModuleList(self.E)
 	
 	def forward(self, src, tar):
-		src_conv = self.SourceFPN(src)	
+		src_conv = self.SourceFPN(src)
 		tar_conv = self.TargetFPN(tar)
-
+		
 		# concat for E4 to E1
 		self.F = []
 		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
+		
 		for i in range(self.N - 1):
 			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
 			warp = self.stn(src_conv[i+1], upsample_F)  
@@ -229,7 +231,7 @@ class FlowNet(nn.Module):
 
 		self.result_first = self.stn(src, self.upsample(self.F[-2]))
 
-		return self.F, self.warp_cloth, self.warp_mask, self.result_first 
+		return self.F, self.warp_cloth, self.warp_mask
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
@@ -283,7 +285,7 @@ def weights_init_kaiming(m):
 
 
 def init_weights(net, init_type='normal'):
-    print('initialization method [%s]' % init_type)
+    # print('initialization method [%s]' % init_type)
     if init_type == 'normal':
         net.apply(weights_init_normal)
     elif init_type == 'xavier':

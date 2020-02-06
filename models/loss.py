@@ -27,7 +27,7 @@ def Zscore(flow,func,scm,wcm,eps=1e-6):
     n_src = torch.sum(scm,axis=1) #(B,)
     scm = scm.view(B,1,H*W)
     scm = torch.cat([scm]*2,1) #B,2,H*W
-    A = get_A(B,256,192) # B,2,H,W
+    A = get_A(B,H,W) # B,2,H,W
     A = A.view(B,2,H*W) #B,2,H*W
     CD = scm * A
     CD_x = CD[:,0,:]
@@ -94,8 +94,8 @@ class VGGLoss(nn.Module):
 
 		x = self.feature_extractor(x)
 		y = self.feature_extractor(y).data
-		return self.mse(x, y)
 
+		return self.mse(x, y)
 
 class FlowLoss(nn.Module):
     def __init__(self, opt):
@@ -119,7 +119,7 @@ class FlowLoss(nn.Module):
         net = net.transpose(2,3).transpose(1,2)
         return net
 	
-    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask):
+    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask): 
         _loss_roi_perc = self.loss_roi_perc(
             warp_mask, warp_cloth, tar_mask, tar_cloth)
         _loss_struct = self.loss_struct(warp_mask, tar_mask)
@@ -138,7 +138,7 @@ class FlowLoss(nn.Module):
             _loss_abs = absFlow(F[-1])
 
         return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat + self.lambda_abs * _loss_abs , _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, _loss_stat,_loss_abs
-
+        
     def loss_struct(self, src, tar,version="MS"):
         if version == "MS":
             return torch.mean(torch.abs(F.leaky_relu(tar-src,0.1764)))
@@ -156,8 +156,11 @@ class FlowLoss(nn.Module):
         return self.vgg_loss(ex_src_mask*src_cloth, ex_tar_mask*tar_cloth)
     
     def loss_smt(self, mat):
-        return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-				  torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))) / (mat.shape[2] * mat.shape[3])
+        # return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+		# 		  torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))) / (mat.shape[2] * mat.shape[3])
+
+        return (torch.sum(torch.abs(mat[:, :, :, :-2] + mat[:, :, :, 2:] - 2*mat[:, :, :, 1:-1])) + \
+				  torch.sum(torch.abs(mat[:, :, :-2, :] + mat[:, :, 2:, :] - 2 * mat[:, :, 1:-1, :]))) / (mat.shape[2] * mat.shape[3])
 
     def ClothDistribution(self,scm):
         """
@@ -172,7 +175,7 @@ class FlowLoss(nn.Module):
         n = torch.sum(scm,axis=1) #(B,)
         scm = scm.view(B,1,H*W)
         scm = torch.cat([scm]*2,1) #B,2,H*W
-        A = self.get_A(B,256,192) # B,2,H,W
+        A = self.get_A(B,H,W) # B,2,H,W
         A = A.view(B,2,H*W) #B,2,H*W
         #print(scm.shape,A.shape)
         CD = scm * A
