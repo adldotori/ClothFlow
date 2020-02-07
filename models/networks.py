@@ -12,16 +12,13 @@ from torch.autograd import Variable
 from torchvision import models, transforms
 from models.loss import *
 
-DEBUG = False 
-MAX_CH = 120
+DEBUG = False
+MAX_CH = 256
 SMOOTH = False 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """
 Two feature pyramid networks - source FPN, target FPN
 N encoding layers => downsample conv with stride 2 followed by one residual block
-N = 4 or 5
 """
 
 def conv(in_channels, out_channels, stride, kernel_size=3, padding=1, dilation=1, bias=False, norm_layer=nn.BatchNorm2d):
@@ -70,7 +67,7 @@ class BasicBlock(nn.Module):
 	downsample + residual block
 	"""
 
-	def __init__(self, c_num, i, norm="batch", activation="relu"):
+	def __init__(self, in_channels, out_channels, norm="batch", activation="relu"):
 		super(BasicBlock, self).__init__()
 
 		if norm == "batch":
@@ -81,15 +78,9 @@ class BasicBlock(nn.Module):
 			use_bias = True
 		else:
 			raise NotImplementedError()
-
-		if (i == 0):
-			self.conv_block1 = conv(c_num, 64, 2, bias=use_bias, norm_layer=norm_layer)
-			self.conv_block2 = conv(64, 64, 1, bias=use_bias, norm_layer=norm_layer)
-		else:
-			self.conv_block1 = conv(
-			    c_num, c_num*2, 2, bias=use_bias, norm_layer=norm_layer)
-			self.conv_block2 = conv(c_num*2, c_num*2, 1,
-			                        bias=use_bias, norm_layer=norm_layer)
+			
+		self.conv_block1 = conv(in_channels, out_channels, 2, bias=use_bias, norm_layer=norm_layer)
+		self.conv_block2 = conv(out_channels, out_channels, 1, bias=use_bias, norm_layer=norm_layer)
 
 		if activation == "leaky":
 			self.activation = nn.LeakyReLU(0.1, inplace=True)
@@ -121,24 +112,24 @@ class STN(nn.Module):
 class for Feature Pyramid Networks
 """
 class FPN(nn.Module):
-	def __init__(self, N, ch_list):
+	def __init__(self, N, start_ch, init_ch = 64):
 		super(FPN, self).__init__()
 		self.N = N
-		self.ch = ch_list
 
 		# encoding layer - left to right
 		self.conv = []
 		for i in range(self.N):
-			self.conv.append(BasicBlock(self.ch[i], i))
-
-		self.toplayer = deconv(
-		    self.ch[-1]*2, MAX_CH, kernel_size=2, padding=0)
+			if i==0:
+				self.conv.append(BasicBlock(start_ch, init_ch))
+			else:
+				self.conv.append(BasicBlock(init_ch * (2**(i-1)), init_ch * (2**i)))
 
 		# decoding layer - left to right
 		self.deconv = []
-		for i in range(self.N-1):
-			self.deconv.append(
-			    deconv(self.ch[-1-i], MAX_CH, kernel_size=4, padding=1))
+		for i in range(self.N):
+			self.deconv.insert(0, deconv(init_ch * 2**(self.N-i-1), 
+				MAX_CH, kernel_size=4, padding=1))
+
 		self.conv = nn.ModuleList(self.conv)
 		self.deconv = nn.ModuleList(self.deconv)
 		
@@ -148,7 +139,10 @@ class FPN(nn.Module):
 
 	def _upsample_add(self, x, y):
 		_, _, H, W = y.size()
-		return F.upsample(x, size=(H, W), mode="bilinear") + y
+		if x is None:
+			return y
+		else:
+			return F.upsample(x, size=(H, W), mode="bilinear") + y
 
 	def forward(self, input):
 		encoder = []
@@ -159,17 +153,11 @@ class FPN(nn.Module):
 			if DEBUG:
 				print('shape of encoder is {}'.format(encoder[-1].shape))
 
-		decoder.append(self.toplayer(encoder[-1]))
-		if DEBUG:
-			print('shape of decoder is {}'.format(decoder[-1].shape))
-		del encoder[-1]
-		gc.collect()
-		for i in range(self.N-1):
-			x = self._upsample_add(decoder[-1], self.deconv[i](encoder[-1]))
-			decoder.append(x)
-			del encoder[-1]
+		for i in range(self.N):
+			x = self._upsample_add(None if i==0 else decoder[0], self.deconv[-i-1](encoder[-i-1]))
+			decoder.insert(0, x)
 			if DEBUG:
-				print('shape of decoder is {}'.format(decoder[-1].shape))
+				print('shape of decoder is {}'.format(decoder[0].shape))
 
 		if SMOOTH:
 			_smooth = []
@@ -180,28 +168,15 @@ class FPN(nn.Module):
 		else:
 			return decoder
 
-
 class FlowNet(nn.Module):
-	def __init__(self, N, src_ch=6, tar_ch=3):
+	def __init__(self, N=4, src_ch=4, tar_ch=1):
 		super(FlowNet, self).__init__()
 		self.N = N
 
-		# define channel list
-		self.src = []
-		self.tar = []
+		self.SourceFPN = FPN(self.N, src_ch)
+		self.TargetFPN = FPN(self.N, tar_ch)
 
-		for i in range(self.N):
-			if (i == 0):
-				self.src.append(src_ch)
-				self.tar.append(tar_ch)
-			else:
-				self.src.append(2**(i+5))  # start with 32
-				self.tar.append(2**(i+5))  # start with 32
-
-		self.SourceFPN = FPN(self.N, self.src)
-		self.TargetFPN = FPN(self.N, self.tar)
-
-        # list for Warp - left to right
+		# list for Warp - left to right
 		L = STN(2)
 		init_weights(L, 'xavier')
 		self.stn = L
@@ -216,29 +191,30 @@ class FlowNet(nn.Module):
 
 		self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 		self.E = nn.ModuleList(self.E)
-	
+
+	# def get_N(self):
+	# 	return self.N
+
 	def forward(self, src, tar):
-		src_conv = self.SourceFPN(src)
-		tar_conv = self.TargetFPN(tar)
-		
-		# concat for E4 to E1
-		self.F = []
-		self.F.append(self.E[0](torch.cat([src_conv[0], tar_conv[0]], 1))) #[W, H, 2]
-		
-		for i in range(self.N - 1):
-			upsample_F = self.upsample(self.F[i]) #[2W, 2H, 2]
-			warp = self.stn(src_conv[i+1], upsample_F)  
-			concat = torch.cat([warp, tar_conv[i+1]], 1)
-			self.F.append(upsample_F.add(self.E[i+1](concat)))
+			src_conv = self.SourceFPN(src)
+			tar_conv = self.TargetFPN(tar)
+			
+			# concat for E4 to E1
+			self.F = []
+			self.F.append(self.E[-1](torch.cat([src_conv[-1], tar_conv[-1]], 1))) #[W, H, 2]
+			
+			for i in range(self.N - 1):
+				upsample_F = self.upsample(self.F[0]) #[2W, 2H, 2]
+				warp = self.stn(src_conv[-i-2], upsample_F)  
+				concat = torch.cat([warp, tar_conv[-i-2]], 1)
+				self.F.insert(0, upsample_F.add(self.E[-i-1](concat)))
 
-		self.result = self.stn(src, self.F[-1])
-		self.warp_cloth = self.stn(src[:,0:3,:,:], self.F[-1])
-		self.warp_mask = self.stn(src[:,3:4,:,:], self.F[-1])
-		self.tar_mask = tar
+			self.result = self.stn(src, self.F[0])
+			self.warp_cloth = self.stn(src[:,0:3,:,:], self.F[0])
+			self.warp_mask = self.stn(src[:,3:4,:,:], self.F[0])
+			self.tar_mask = tar
 
-		self.result_first = self.stn(src, self.upsample(self.F[-2]))
-
-		return self.F, self.warp_cloth, self.warp_mask
+			return self.F, self.warp_cloth, self.warp_mask
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])
