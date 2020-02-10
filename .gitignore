@@ -1,2 +1,5 @@
 __pycache__/
 dataset/
+runs/
+checkpoints/
+backup/

@@ -130,12 +130,12 @@ class FlowLoss(nn.Module):
         if self.lambda_stat == -1:
             _loss_stat = torch.tensor(0)
         else:
-            _loss_stat = self.stat_loss(F[-1],src_mask,warp_mask)
+            _loss_stat = self.stat_loss(F[0],src_mask,warp_mask)
 
         if self.lambda_abs == -1:
             _loss_abs = torch.tensor(0)
         else:
-            _loss_abs = absFlow(F[-1])
+            _loss_abs = absFlow(F[0])
 
         return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat + self.lambda_abs * _loss_abs , _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, _loss_stat,_loss_abs
         
@@ -156,12 +156,46 @@ class FlowLoss(nn.Module):
         return self.vgg_loss(ex_src_mask*src_cloth, ex_tar_mask*tar_cloth)
     
     def loss_smt(self, mat):
-        # return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
-		# 		  torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))) / (mat.shape[2] * mat.shape[3])
+        return (torch.sum(torch.abs(mat[:, :, :, :-1] - mat[:, :, :, 1:])) + \
+				  torch.sum(torch.abs(mat[:, :, :-1, :] - mat[:, :, 1:, :]))) / (mat.shape[2] * mat.shape[3])
 
-        return (torch.sum(torch.abs(mat[:, :, :, :-2] + mat[:, :, :, 2:] - 2*mat[:, :, :, 1:-1])) + \
-				  torch.sum(torch.abs(mat[:, :, :-2, :] + mat[:, :, 2:, :] - 2 * mat[:, :, 1:-1, :]))) / (mat.shape[2] * mat.shape[3])
+        # return (torch.sum(torch.abs(mat[:, :, :, :-2] + mat[:, :, :, 2:] - 2*mat[:, :, :, 1:-1])) + \
+		# 		  torch.sum(torch.abs(mat[:, :, :-2, :] + mat[:, :, 2:, :] - 2 * mat[:, :, 1:-1, :]))) / (mat.shape[2] * mat.shape[3])
+    
+    def _gradient_penalty(self, real_data, generated_data):
+        batch_size = real_data.size()[0]
 
+        # Calculate interpolation
+        alpha = torch.rand(batch_size, 1, 1, 1)
+        alpha = alpha.expand_as(real_data)
+        if self.use_cuda:
+            alpha = alpha.cuda()
+        interpolated = alpha * real_data.data + (1 - alpha) * generated_data.data
+        interpolated = Variable(interpolated, requires_grad=True)
+        if self.use_cuda:
+            interpolated = interpolated.cuda()
+
+        # Calculate probability of interpolated examples
+        prob_interpolated = self.D(interpolated)
+
+        # Calculate gradients of probabilities with respect to examples
+        gradients = torch_grad(outputs=prob_interpolated, inputs=interpolated,
+                                grad_outputs=torch.ones(prob_interpolated.size()).cuda() if self.use_cuda else torch.ones(
+                                prob_interpolated.size()),
+                                create_graph=True, retain_graph=True)[0]
+
+        # Gradients have shape (batch_size, num_channels, img_width, img_height),
+        # so flatten to easily take norm per example in batch
+        gradients = gradients.view(batch_size, -1)
+        self.losses['gradient_norm'].append(gradients.norm(2, dim=1).mean().data[0])
+
+        # Derivatives of the gradient close to 0 can cause problems because of
+        # the square root, so manually calculate norm and add epsilon
+        gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12)
+
+        # Return gradient penalty
+        return self.gp_weight * ((gradients_norm - 1) ** 2).mean()
+        
     def ClothDistribution(self,scm):
         """
         input : source cloth mask -> B,1,H,W
@@ -246,4 +280,4 @@ class FlowLoss(nn.Module):
         Dxy2 = torch.pow((xy2_ - CD[:,8])/(torch.sqrt((CD[:,10]-CD[:,8]**2)/(n+0.1*eps))+0.1*eps),2)
         Dx2y = torch.pow((x2y_ - CD[:,9])/(torch.sqrt((CD[:,11]-CD[:,9]**2)/(n+0.1*eps))+0.1*eps),2)
         return torch.mean(Dx + Dy + Dx2 + Dy2 + Dxy + Dxy2 + Dx2y)
-        
+

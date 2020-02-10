@@ -7,7 +7,7 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from models.networks import *
+from Models.networks import *
 from dataloader_viton import *
 import argparse
 from tqdm import tqdm_notebook
@@ -26,7 +26,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=20)
+    parser.add_argument('-b', '--batch-size', type=int, default=3)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/")
     parser.add_argument("--datamode", default = "train")
@@ -69,7 +69,7 @@ def load_checkpoint(model, checkpoint_path):
     if not os.path.exists(checkpoint_path):
         print("error")
         return
-    model.load_state_dict(torch.load(checkpoint_path))
+    model.load_state_dict(torch.load(checkpoint_path), False)
     model.cuda()
 
 def train(opt):
@@ -81,9 +81,9 @@ def train(opt):
     net = nn.functional.affine_grid(A,(opt.batch_size,2,INPUT_SIZE[1],INPUT_SIZE[0])).cuda()
     ####
 
-    model = FlowNet(PYRAMID_HEIGHT, 4, 1)
-    model = nn.DataParallel(model, output_device=0)
-# load_checkpoint(model,"checkpoints/1/0_00050.pth")###
+    model = FlowNet(6)
+    model = nn.DataParallel(model)
+    # load_checkpoint(model,"backup/initial__4_02426.pth")##
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
@@ -119,7 +119,7 @@ def train(opt):
 
             optimizer.zero_grad()
             #loss, roi_perc, struct, smt = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth)
-            loss = Flow(F[-1].transpose(1,2).transpose(2,3),net)###
+            loss = Flow(F[0].transpose(1,2).transpose(2,3),net)###
             loss.backward()
             optimizer.step()
 
@@ -149,6 +149,6 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'initial_%s_%d_%05d.pth' % (opt.init_name,epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1,2,3"
     opt = get_opt()
     train(opt)
