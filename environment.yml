@@ -1,5 +1,0 @@
-name: test
-channels:
-  - defaults
-prefix: /home/fashionteam/anaconda/envs/test
-

@@ -7,7 +7,7 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from models.networks import *
+from Models.networks import *
 from dataloader_viton import *
 import argparse
 from torch.nn import DataParallel as DP

@@ -12,11 +12,10 @@ import json
 import pickle
 
 #import time
-
-INPUT_SIZE = (256, 256)
+INPUT_SIZE = (1024, 1024)
 
 def naming(file_name):
-    return file_name[:-6]
+    return file_name[:6]
 
 class CFDataset(data.Dataset):
     """Dataset for CP-VTON.
@@ -36,12 +35,13 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = os.listdir(osp.join(self.data_path,"image"))
+        self.image_files = os.listdir(osp.join(self.data_path,"pose_pkl"))
 
     def name(self):
         return "CFDataset"
 
     def __getitem__(self, index):
+
 
         name = naming(self.image_files[index])
 
@@ -57,9 +57,6 @@ class CFDataset(data.Dataset):
 
             if not os.path.exists(target_softmax_path):
                 print(target_softmax_path)
-            warped_cloth_path = osp.join(self.result_dir+'/GMM', pair+'.jpg')
-            # if not os.path.exists(warped_cloth_path):
-            #     print(warped_cloth_path)
             target_softmax_shape = Image.open(target_softmax_path).resize(INPUT_SIZE)
             target_softmax_shape = target_softmax_shape.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
             target_softmax_shape = target_softmax_shape.resize((self.fine_width, self.fine_height), Image.BILINEAR)
@@ -75,6 +72,8 @@ class CFDataset(data.Dataset):
         c_mask_array = (c_mask_array > 0).astype(np.float32)
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
+
+        original_image = image #
 
         cloth_ = self.transform(cloth)
         image = self.transform(image)
@@ -127,7 +126,7 @@ class CFDataset(data.Dataset):
         # cloth_sample = cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
         # shape_sample = self.transform_1ch(shape_sample)
 
-        # head = torch.from_numpy(head)
+        head = torch.from_numpy(head)
         cloth = torch.from_numpy(cloth)
         # arms = torch.from_numpy(arms)
         # pants = torch.from_numpy(pants)
@@ -135,9 +134,9 @@ class CFDataset(data.Dataset):
         #c_cloth_sample = self.transform(c_cloth_sample)
 
         
-        # crop_head = image * head - (1 - head)
+        crop_head = image * head + (1 - head)
         crop_cloth = image * cloth + (1 - cloth)
-        # off_cloth = image * (1-cloth) + cloth
+        off_cloth = image * (1-cloth) + cloth
         # crop_arms = image * arms + (1-arms)
         # crop_pants = image * pants + (1-pants)
 
@@ -154,33 +153,33 @@ class CFDataset(data.Dataset):
         """
         #start_time = time.time()
         ###
-        # with open(path_pose, 'rb') as f:
-        #     pose_label = pickle.load(f)
-        # pose_data = pose_label
-        # ###
+        with open(path_pose, 'rb') as f:
+            pose_label = pickle.load(f)
+        pose_data = pose_label
+        ###
 
-        # point_num = 18
-        # pose_map = torch.zeros(point_num, H, W)
-        # r = self.radius
-        # pose = Image.new('L', (W, H))
-        # pose_draw = ImageDraw.Draw(pose)
-        # for i in range(point_num):
-        #     one_map = Image.new('L', (W, H))
-        #     draw = ImageDraw.Draw(one_map)
-        #     if i in pose_data.keys():
-        #         pointx = pose_data[i][0]
-        #         pointy = pose_data[i][1]
-        #     else:
-        #         pointx = -1
-        #         pointy = -1
+        point_num = 18
+        pose_map = torch.zeros(point_num, H, W)
+        r = self.radius
+        pose = Image.new('L', (W, H))
+        pose_draw = ImageDraw.Draw(pose)
+        for i in range(point_num):
+            one_map = Image.new('L', (W, H))
+            draw = ImageDraw.Draw(one_map)
+            if i in pose_data.keys():
+                pointx = pose_data[i][0]
+                pointy = pose_data[i][1]
+            else:
+                pointx = -1
+                pointy = -1
 
-        #     #c_pointx = c_pointx * 192 / 762
-        #     #c_pointy = c_pointy * 256 / 1000
-        #     if pointx > 1 and pointy > 1:
-        #         draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-        #         pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-        #     one_map = self.transform_1ch(one_map)
-        #     pose_map[i] = one_map[0]
+            #c_pointx = c_pointx * 192 / 762
+            #c_pointy = c_pointy * 256 / 1000
+            if pointx > 1 and pointy > 1:
+                draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+                pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+            one_map = self.transform_1ch(one_map)
+            pose_map[i] = one_map[0]
 
         """
         t_pose_data = - np.ones((18, 2), dtype=int)
@@ -232,8 +231,8 @@ class CFDataset(data.Dataset):
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
             'image': image,  # source image
-            # 'head': crop_head,# cropped head from source image
-            # 'pose': pose_map,#pose map
+            'head': crop_head,# cropped head from source image
+            'pose': pose_map,#pose map
             #'shape': shape,
             # 'shape_sample': shape_sample,
             #'grid_image': im_g,
@@ -245,7 +244,8 @@ class CFDataset(data.Dataset):
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
             'name' : name,
-            # 'off_cloth': off_cloth,#source image - cloth
+            'off_cloth': off_cloth,#source image - cloth
+            'parse' : parse,
             # 'cloth_sample': cloth_sample,#coarse cloth mask
             # 'arms_mask': arms,
             # 'pants_mask': pants,
@@ -265,11 +265,14 @@ class CFDataLoader(object):
     def __init__(self, opt, dataset):
         super(CFDataLoader, self).__init__()
 
-        sampler = torch.utils.data.sampler.RandomSampler(dataset)
+        if opt.shuffle :
+            train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
+        else:
+            train_sampler = None
 
         self.data_loader = torch.utils.data.DataLoader(
-                dataset, batch_size=opt.batch_size, shuffle=False,
-                num_workers=opt.workers, pin_memory=True, sampler=sampler)
+                dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
+                num_workers=opt.workers, pin_memory=True, sampler=train_sampler)
         self.dataset = dataset
         self.data_iter = self.data_loader.__iter__()
        
@@ -292,8 +295,8 @@ if __name__ == "__main__":
     parser.add_argument("--datamode", default = "")
     parser.add_argument("--stage", default = "PGP")
     parser.add_argument("--data_list", default = "MVCup_pair.txt")
-    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
-    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
+    parser.add_argument("--fine_width", type=int, default = 192)
+    parser.add_argument("--fine_height", type=int, default = 256)
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument('-b', '--batch-size', type=int, default=4)
