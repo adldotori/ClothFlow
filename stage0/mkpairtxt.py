@@ -1,0 +1,30 @@
+import os
+import random
+
+data_root = "/home/fashionteam/dataset_MVC_bottoms/train/"
+
+
+lidi = os.listdir(data_root)
+f = open("../train_MVCbottoms_pair.txt", 'wt')
+g = open("delete.txt",'r')
+delete = g.read()
+print(delete)
+for i in range(len(lidi)):
+    tedi = os.listdir(data_root+lidi[i]+"/")
+    rind =  random.randint(0,1)
+    rind = 2*rind + 1
+    if lidi[i] in delete:
+        print("error3" + lidi[i])
+        continue
+    if not ("p" in tedi):
+        print("error1 "+lidi[i])
+        continue
+    if str(rind) in tedi:
+        f.write(lidi[i]+" p "+str(rind)+"\n")
+    else:
+        if not (str(4-rind) in tedi):
+            print("error2 "+lidi[i])
+            continue
+        else:
+            f.write(lidi[i]+" p "+str(4-rind)+"\n")
+f.close()

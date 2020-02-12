@@ -12,10 +12,7 @@ from dataloader_viton import *
 import argparse
 from torch.nn import DataParallel as DP
 
-INPUT_SIZE = (192, 256)
 PYRAMID_HEIGHT = 5
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -49,7 +46,7 @@ def load_checkpoint(model, checkpoint_path):
         print('[-] Checkpoint Load Error!')        
         exit()
     model.load_state_dict(torch.load(checkpoint_path))
-    model.to(device)
+    model.cuda()
 
 def save_images(img_tensors, img_names, save_dir):
     for img_tensor, img_name in zip(img_tensors, img_names):
@@ -82,10 +79,10 @@ def test(opt):
     for step in range(len(test_loader.dataset)):
         inputs = test_loader.next_batch()
         name = inputs['name']
-        con_cloth = inputs['cloth'].to(device)
-        con_cloth_mask = inputs['cloth_mask'].to(device)
-        tar_cloth = inputs['crop_cloth'].to(device) 
-        tar_cloth_mask = inputs['crop_cloth_mask'].to(device)
+        con_cloth = inputs['cloth'].cuda()
+        con_cloth_mask = inputs['cloth_mask'].cuda()
+        tar_cloth = inputs['crop_cloth'].cuda()
+        tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
 
         [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
         # optimizer.zero_grad()

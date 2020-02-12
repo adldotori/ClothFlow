@@ -9,57 +9,58 @@ import matplotlib.pyplot as plt
 import numpy as np
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_viton import *
+from dataloader_MVC import *
 import argparse
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 from torchvision.utils import save_image
 import os.path as osp
 
 from tensorboardX import SummaryWriter
 import sys
-sys.path.append("/home/fashionteam/ClothFlow")
-from Lab.ClothNormalize import ClothNormalizer
 import time
 
-INPUT_SIZE = (192, 256)
 EPOCHS = 15
-PYRAMID_HEIGHT = 5
+PYRAMID_HEIGHT = 4
+IS_TOPS = False # TOPS or BOTTOMS 
 
-
+if IS_TOPS:
+    dataroot = '/home/fashionteam/dataset_MVC_tops/'
+    datalist = 'MVCtops_pair.txt'
+    exp = 'test/tops/'
+    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/tops/'
+    in_channels = 22
+else:
+    dataroot = '/home/fashionteam/dataset_MVC_bottoms/'
+    datalist = 'MVCbottoms_pair.txt'
+    exp = 'test/bottoms/'
+    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/bottoms/'
+    in_channels = 2
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=12)
+    parser.add_argument('-b', '--batch_size', type=int, default=8)
     
-    parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/test/")
-    parser.add_argument("--datamode", default = "")
+    parser.add_argument("--dataroot", default = dataroot)
+    parser.add_argument("--datamode", default = "train")
     parser.add_argument("--stage", default = "stage1")
-    parser.add_argument("--data_list", default = "MVCup_pair.txt")
-    parser.add_argument("--fine_width", type=int, default = 192)
-    parser.add_argument("--fine_height", type=int, default = 256)
+    parser.add_argument("--data_list", default = datalist)
+    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
+    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default='/home/fashionteam/ClothFlow/stage1/checkpoints', help='save checkpoint infos')
-    parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
+    parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
     parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 500)
     parser.add_argument("--save_count_npz", type=int, default = 50)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
-    
-    parser.add_argument("--smt_loss", type=float, default=2)
-    parser.add_argument("--perc_loss", type=float, default=1)
-    parser.add_argument("--struct_loss", type=float, default=1.7*10)
-    parser.add_argument("--stat_loss", type=float, default=0)
-    parser.add_argument("--abs_loss", type=float, default=0)
-    #parser.add_argument("--naming", type=str, default="default")
-    parser.add_argument("--save_dir", type=str, default="/home/fashionteam/ClothFlow/npz")
-    parser.add_argument("--exp", type=str, default="experiment")
+    parser.add_argument("--exp", type=str, default=exp)
     
 
     opt = parser.parse_args()
@@ -104,14 +105,12 @@ def WriteImage(writer,name,data,cnt):
 
 def test(opt):
 
-    model = UNet(opt, in_channels=22)
+    model = UNet(opt, in_channels=in_channels)
     model = nn.DataParallel(model,output_device=0)
-    load_checkpoint(model, "./12_00940.pth")
-    #load_checkpoint(model, "/home/fashionteam/ClothFlow/checkpoints/default/stage2/2_00240.pth")
+    load_checkpoint(model, "../backup/stage1_bot_512.pth")
     model.cuda()
     model.train()
-    #optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    test_dataset = CFDataset(opt)
+    test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
 
     #theta_generator = ClothNormalizer()
@@ -121,48 +120,51 @@ def test(opt):
     
     #Flow = FlowLoss(opt).cuda()
 
-    writer = SummaryWriter("/home/fashionteam/ClothFlow/stage1/debug/runs/"+opt.exp)
+    writer = SummaryWriter("/home/fashionteam/ClothFlow/stage1/runs/"+opt.exp)
     rLoss = renderLoss()
 
-    
+    if not osp.isdir(opt.result_dir):
+        os.makedirs(opt.result_dir)
 
-    for epoch in tqdm_notebook(range(EPOCHS), desc='EPOCH'):
-        for step in tqdm_notebook(range(len(test_loader.dataset)//opt.batch_size + 1), desc='step'):
-            cnt = epoch * (len(test_loader.dataset)//opt.batch_size + 1) + step + 1
-            
-            inputs = test_loader.next_batch()
-            
-            con_cloth = inputs['cloth'].cuda()
-            con_cloth_mask = inputs['cloth_mask'].cuda()
+    for step in tqdm(range(len(test_loader.dataset)//opt.batch_size + 1), desc='step'):
+        cnt = step + 1
+        
+        inputs = test_loader.next_batch()
+        
+        con_cloth = inputs['cloth'].cuda()
+        con_cloth_mask = inputs['cloth_mask'].cuda()
+        name = inputs['name']
+        if IS_TOPS:
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
             pose = inputs['pose'].cuda()
-            name = inputs['name']
+        else:
+            tar_cloth_mask = inputs['crop_pants_mask'].cuda() #answer   
+            tar_body_mask = inputs['target_body_shape'].cuda()
 
+        if IS_TOPS:
             result = model(con_cloth, con_cloth_mask, pose)
+        else:
+            result = model(con_cloth_mask, tar_body_mask, None)
 
-            temp = torch.cat([tar_cloth_mask, result], 0)				
+        loss = rLoss(result, tar_cloth_mask)
 
+        if (step+1) % opt.display_count == 0:
             writer.add_images("GT", tar_cloth_mask, cnt)
             writer.add_images("cloth", con_cloth, cnt)
-            writer.add_images("mask", con_cloth_mask, cnt)#, dataformats="NCHW")
-
+            writer.add_images("mask", con_cloth_mask, cnt)
             writer.add_images("Result", result, cnt)
-            writer.add_images("Cat", temp, cnt)
-					
-            loss = rLoss(result, tar_cloth_mask)
-
-            if (step+1) % opt.display_count == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch+1, (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
-                    100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
             writer.add_scalar("loss/loss", loss, cnt)
-
             writer.close()
-            save_images(result, name, "/home/fashionteam/ClothFlow/warped_mask/test")
-        break
+
+        # if (step+1) % opt.display_count == 0:
+        #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+        #         epoch+1, (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
+        #         100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
+
+        save_images(result, name, opt.result_dir)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "2"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
 
     opt = get_opt()
     test(opt)

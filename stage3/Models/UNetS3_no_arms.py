@@ -124,7 +124,7 @@ class UpConv(nn.Module):
 
 class UNet(nn.Module):
 
-    def __init__(self, opt, in_channels=22, depth=4,
+    def __init__(self, opt, in_channels=19, depth=4,
                  start_filts=64, up_mode='transpose',
                  merge_mode='concat'):
         """
@@ -188,21 +188,20 @@ class UNet(nn.Module):
             self.cloth_warp.append(down_conv)
         """
 
-        self.bottle_0 = nn.Sequential(nn.Conv2d(32 * 2**depth,32 * 2**depth,3,1,1),
-                                    nn.InstanceNorm2d(32 * 2**depth),
+        self.bottle_0 = nn.Sequential(nn.Conv2d(512,512,3,1,1),
+                                    nn.InstanceNorm2d(512),
                                     nn.LeakyReLU(0.2, True))
-        self.bottle_1 = nn.Sequential(nn.Conv2d(32 * 2**depth,32 * 2**depth,3, dilation=2, padding=2, bias=False),
-                                    nn.InstanceNorm2d(32 * 2**depth),
+        self.bottle_1 = nn.Sequential(nn.Conv2d(512,512,3, dilation=2, padding=2, bias=False),
+                                    nn.InstanceNorm2d(512),
                                     nn.LeakyReLU(0.2, True)
                                     )
-        self.bottle_2 = nn.Sequential(nn.Conv2d(32 * 2**depth, 32 * 2**depth, 3, dilation=4, padding=4, bias=False),
-                                      nn.InstanceNorm2d(32 * 2**depth),
+        self.bottle_2 = nn.Sequential(nn.Conv2d(512, 512, 3, dilation=4, padding=4, bias=False),
+                                      nn.InstanceNorm2d(512),
                                       nn.LeakyReLU(0.2, True)
                                       )
 
         for i in range(depth):
-#ins = (3+3+20+3+18) if i == 0 else outs  
-            ins =in_channels if i==0 else outs
+            ins = (3+3+3+18+3+3) if i == 0 else outs
             outs = self.start_filts * (2 ** i)
             pooling = True if i < depth - 1 else False
 
@@ -220,7 +219,7 @@ class UNet(nn.Module):
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
         #self.cloth_warp = nn.ModuleList(self.cloth_warp)
-        self.final_layer1 = nn.Conv2d(64,1,7,1,3)
+        self.final_layer1 = nn.Conv2d(64,3,7,1,3)
         #self.final_layer2 = nn.Conv2d(64,1,7,1,3)
         #self.sig = nn.Sigmoid()
         self.tanh = nn.Tanh()
@@ -244,12 +243,9 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, cloth, cloth_mask, target_pose):
+    def forward(self, cloth, source_image,target_pose,warped_cloth,head,pants):
         encoder_outs = []
-        if target_pose == None:
-            x = torch.cat((cloth, cloth_mask), 1)
-        else:
-            x = torch.cat((cloth, cloth_mask, target_pose), 1)
+        x = torch.cat((cloth,source_image,target_pose,warped_cloth,head,pants), 1)
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)
@@ -262,6 +258,7 @@ class UNet(nn.Module):
             y, before_pool_feature = module(y)
             encoder_out_cloth.append(before_pool_feature)
         """
+
 
         x = self.bottle_0(x)
         bottle_0 = x

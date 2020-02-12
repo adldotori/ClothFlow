@@ -20,8 +20,19 @@ from ClothNormalize import ClothNormalizer
 
 EPOCHS = 10
 PYRAMID_HEIGHT = 4
-device = torch.device("cuda:1")
+IS_TOPS = True
 
+if IS_TOPS:
+    dataroot = '/home/fashionteam/dataset_MVC_tops/'
+    datalist = 'MVCtops_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
+    exp = 'train/tops/'
+else:
+    dataroot = '/home/fashionteam/dataset_MVC_bottoms/'
+    datalist = 'MVCbottoms_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/bottoms/'
+    exp = 'train/bottoms/'
+    
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
@@ -30,10 +41,10 @@ def get_opt():
     parser.add_argument('-b', '--batch_size', type=int, default=3)
     parser.add_argument('--local_rank', type=int, default=0)
     
-    parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/")
+    parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
     parser.add_argument("--stage", default = "1")
-    parser.add_argument("--data_list", default = "MVCup_pair_nounder.txt")
+    parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
@@ -73,9 +84,9 @@ def load_checkpoint(model, checkpoint_path, strict=True):
     model.load_state_dict(torch.load(checkpoint_path),strict=strict)	
 
 def train(opt):
-    model = FlowNet(6)
+    model = FlowNet(5)
     model = nn.DataParallel(model)
-    load_checkpoint(model, "./backup/initial__1_00259.pth", False)
+    load_checkpoint(model, "./backup/init_5_512.pth", False)
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
@@ -83,8 +94,8 @@ def train(opt):
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
     
-    theta_generator = ClothNormalizer(depth=6)
-    load_checkpoint(theta_generator,"/home/fashionteam/ClothFlow/backup/Epoch:2_01388.pth")
+    theta_generator = ClothNormalizer(depth=5)
+    load_checkpoint(theta_generator,"./backup/G_theta_affine_512.pth")
     theta_generator.cuda()
     theta_generator.eval()
 
@@ -101,9 +112,10 @@ def train(opt):
        f.write("{} --- {}\n".format(key, val))
     f.close()
 
-    for epoch in range(EPOCHS):
-        for step in range(len(train_loader.dataset)//opt.batch_size + 1):
+    for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
+        for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
+
             inputs = train_loader.next_batch()
 
             con_cloth = inputs['cloth'].cuda()
@@ -117,10 +129,9 @@ def train(opt):
             con_cloth_mask = Ft.grid_sample(con_cloth_mask , grid1).detach()
             con_cloth = Ft.grid_sample(con_cloth , grid2,padding_mode="border").detach()
         
-            # [F, warp_cloth, warp_mask, result_list] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
             [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
             
-            if step % opt.save_img_count == 0:
+            if (step+1) % opt.save_img_count == 0:
                 writer.add_images("con_cloth", con_cloth, cnt)
                 writer.add_images("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
                 writer.add_images("tar_cloth", tar_cloth, cnt)
@@ -134,7 +145,7 @@ def train(opt):
                 optimizer.step()
                 optimizer.zero_grad()
 
-            if cnt % opt.save_img_count == 0 and opt.save_dir != "NONE":
+            if (step+1) % opt.save_img_count == 0 and opt.save_dir != "NONE":
                _dir = os.path.join(opt.save_dir, opt.naming, str(epoch)+"_"+str(step))
                if not os.path.exists(_dir): 
                    os.makedirs(_dir)
@@ -146,19 +157,19 @@ def train(opt):
                save_image(con_cloth[0], os.path.join(_dir, "source.png"))
 
             if (step+1) % opt.display_count == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
-                    100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
-            writer.add_scalar("loss/roi_perc", roi_perc, cnt)
-            writer.add_scalar("loss/struct", struct, cnt)
-            writer.add_scalar("loss/smt", smt, cnt)
-            writer.add_scalar("loss/total", loss, cnt)
-            writer.close()
+                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                #     epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
+                #     100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
+                writer.add_scalar("loss/roi_perc", roi_perc, cnt)
+                writer.add_scalar("loss/struct", struct, cnt)
+                writer.add_scalar("loss/smt", smt, cnt)
+                writer.add_scalar("loss/total", loss, cnt)
+                writer.close()
 
-            if cnt % opt.save_count == 0:
+            if (step+1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.naming, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = '1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
     opt = get_opt()
     train(opt)

@@ -24,7 +24,7 @@ from torch.nn import DataParallel as DP
 
 from tensorboardX import SummaryWriter
 
-from ClothNormalize import *
+from Models.ClothNormalize import *
 
 EPOCHS = 30
 PYRAMID_HEIGHT = 5

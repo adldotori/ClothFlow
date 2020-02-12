@@ -4,13 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import gc
 
 from torch.nn import init
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
 from torchvision import models, transforms
-from models.loss import *
+from Models.loss import *
 
 DEBUG = False
 MAX_CH = 256

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from torch.nn import init
-from dataloader_viton import *
+from dataloader_MVC import *
 
 def two(n,maxtwo=512):
     return min(2**n,maxtwo)
