@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from Models.UNetS3 import *
 from Models.LossS3 import *
+from Models.net_canny import *
+from Models.loss_canny import *
 from dataloader_MVC import *
 import argparse
 from tqdm import tqdm
@@ -17,10 +19,12 @@ from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 import sys
 import time
+import os
 
 EPOCHS = 15
 PYRAMID_HEIGHT = 5
 IS_TOPS = False # TOPS or BOTTOMS 
+
 
 if IS_TOPS:
     dataroot = '/home/fashionteam/dataset_MVC_tops/'
@@ -40,7 +44,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=10)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -80,18 +84,26 @@ def load_checkpoint(model, checkpoint_path):
     model.cuda()
 
 def train(opt):
-
     model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
     model = nn.DataParallel(model)
     model.cuda()
     model.train()
+
+    canny = Canny()
+    canny.cuda()
+
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
     train_dataset = CFDataset(opt, is_tops=IS_TOPS)
     train_loader = CFDataLoader(opt, train_dataset)
 
-    os.rmdir("/home/fashionteam/ClothFlow/stage1/runs/"+opt.exp)
-    writer = SummaryWriter("/home/fashionteam/ClothFlow/stage1/runs/"+opt.exp)
+    runs = "/home/fashionteam/ClothFlow/stage1/runs/"
+    if os.path.isdir(runs):
+        os.system('rm -r '+runs+opt.exp)
+    os.makedirs(runs+opt.exp)
+    writer = SummaryWriter(runs+opt.exp)
+
     rLoss = renderLoss()
+    cLoss = WeightedMSE()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
@@ -110,12 +122,35 @@ def train(opt):
                 tar_body_mask = inputs['target_body_shape'].cuda()
             
             if IS_TOPS:
-                result = model(con_cloth, con_cloth_mask, pose)
+                result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
             else:
-                result = model(con_cloth_mask, tar_body_mask, None)
+                result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
             
             optimizer.zero_grad()
-            loss = rLoss(result, tar_cloth_mask)
+            
+            img1 = canny(result)
+            img2 = canny(tar_cloth_mask)
+				
+            writer.add_images("result_canny", img1, cnt)
+            writer.add_images("GT_canny", img2, cnt)
+
+            # style, mse = cLoss(img1, img2)
+            # if epoch <= 4:
+            #     style = style * 0.0
+            #     mse = mse * 0.0
+            # else:
+            #     style = style / 1000	
+            #     mse = mse * 100
+                
+            r_loss = rLoss(result, tar_cloth_mask) 
+            # c_loss = style + mse
+            # loss = c_loss + r_loss
+
+            loss = r_loss
+            if epoch >= 4:
+                c_loss = cLoss.forward(img1, img2)
+                loss += c_loss
+            
             loss.backward()
             optimizer.step()
 
@@ -123,8 +158,14 @@ def train(opt):
                 writer.add_images("cloth", con_cloth, cnt)
                 writer.add_images("mask", con_cloth_mask, cnt)
                 writer.add_images("GT", tar_cloth_mask, cnt)
+                if not IS_TOPS:
+                    writer.add_images("tar_body", tar_body_mask, cnt)
                 writer.add_images("Result", result, cnt)
                 writer.add_scalar("loss/loss", loss, cnt)
+                # writer.add_scalar("loss/c_loss/style", style, cnt)
+                # writer.add_scalar("loss/c_loss/mse", mse, cnt)
+                # writer.add_scalar("loss/c_loss/total", c_loss, cnt)
+                writer.add_scalar("loss/r_loss", r_loss, cnt)
                 writer.close()
 
             # if (step+1) % opt.display_count == 0:

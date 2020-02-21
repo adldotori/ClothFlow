@@ -38,12 +38,13 @@ def naming(pair,position):
 class CFDataset(data.Dataset):
     """Dataset for CF-VTON.
     """
-    def __init__(self, opt, is_tops=False):
+    def __init__(self, opt, is_tops=True):
         super(CFDataset, self).__init__()
         # base setting
         self.is_tops = is_tops
         self.opt = opt
         self.root = opt.dataroot
+        self.root_mask = opt.dataroot_mask
         self.datamode = opt.datamode # train or test or self-defined
         self.stage = opt.stage # GMM or TOM
         self.data_list = opt.datamode+'_'+opt.data_list
@@ -104,7 +105,6 @@ class CFDataset(data.Dataset):
 
         path_c_image = osp.join(self.data_path, pair, naming(pair,c_name)) # condition image path
         path_t_image = osp.join(self.data_path, pair, naming(pair,t_name)) # target image path
-
         c_image = Image.open(path_c_image).resize(INPUT_SIZE)
         t_image = Image.open(path_t_image).resize(INPUT_SIZE)
 
@@ -116,6 +116,12 @@ class CFDataset(data.Dataset):
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
 
+        output = Image.open(osp.join(self.root_mask,pair+".jpg"))
+        output = np.array(output)
+        output = (output > 0).astype(np.float32)
+        output = torch.from_numpy(output)
+        output = output.unsqueeze_(0)
+
         cloth = self.transform(cloth)
         c_image = self.transform(c_image)
         t_image = self.transform(t_image)
@@ -123,13 +129,13 @@ class CFDataset(data.Dataset):
         
 
         # conditionnal parsing and pose path
-        path_c_seg = osp.join(self.data_path, pair, c_name, "segment_resize.jpg")
+        path_c_seg = osp.join(self.data_path, pair, c_name, "segment_resize.png")
         if self.is_tops:
             path_c_pose = osp.join(self.data_path, pair, c_name, "pose_resize.pkl")
         #target parsing and pose path
         t_name = t_name
-        path_t_seg = osp.join(self.data_path, pair, t_name,  "segment_resize.jpg")
-        path_t_vis_seg = osp.join(self.data_path, pair, t_name,  "segment_vis_resize.jpg")
+        path_t_seg = osp.join(self.data_path, pair, t_name,  "segment_resize.png")
+        path_t_vis_seg = osp.join(self.data_path, pair, t_name,  "segment_vis_resize.png")
         if self.is_tops:
             path_t_pose = osp.join(self.data_path, pair, t_name, "pose_resize.pkl")
 
@@ -296,7 +302,7 @@ class CFDataset(data.Dataset):
                     c_pose_draw.rectangle((c_pointx - r, c_pointy - r, c_pointx + r, c_pointy + r), 'white', 'white')
                 one_map = self.transform_1ch(one_map)
                 c_pose_map[i] = one_map[0]
-
+            c_pose_s = self.transform_1ch(c_pose)
             """
             t_pose_data = - np.ones((18, 2), dtype=int)
             with open(path_t_pose, 'rb') as f:
@@ -333,6 +339,7 @@ class CFDataset(data.Dataset):
                     t_pose_draw.rectangle((t_pointx - r, t_pointy - r, t_pointx + r, t_pointy + r), 'white', 'white')
                 one_map = self.transform_1ch(one_map)
                 t_pose_map[i] = one_map[0]
+            t_pose_s = self.transform_1ch(t_pose)
 
         if self.is_tops:
             target_pose_png_path = osp.join(self.data_path, pair, t_name, "pose.png")
@@ -364,21 +371,26 @@ class CFDataset(data.Dataset):
                 'cloth': cloth,
                 'cloth_mask': cloth_mask,
                 'crop_cloth': tar_cloth,
-                'crop_cloth_mask': t_cloth,
-                'crop_pants_mask': t_pants,
+                'crop_cloth_mask': t_cloth,# t_cloth or output
                 'pose': t_pose_map,
+                'pose_png': target_pose_png,
                 'name': pair,
-                'target_body_shape': t_body_parse
+                'target_body_shape': t_body_parse,
+                'c_pose':  c_pose_map,
+                'c_pose_data': c_pose_s,
+                't_pose': t_pose_map,
+                't_pose_data': t_pose_s,
+                't_name': t_name,
                 }
         else:
             result = {
                 'cloth': cloth,
                 'cloth_mask': cloth_mask,
-                'crop_cloth': tar_cloth,
-                'crop_cloth_mask': t_cloth,
-                'crop_pants_mask': t_pants,
+                'crop_cloth': tar_pants,
+                'crop_cloth_mask': t_pants,
                 'name': pair,
-                'target_body_shape': t_body_parse
+                'target_body_shape': t_body_parse,
+                't_name': t_name,
                 }
         
         return result

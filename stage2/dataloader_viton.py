@@ -13,7 +13,7 @@ import pickle
 
 #import time
 
-INPUT_SIZE = (1024, 1024)
+INPUT_SIZE = (512, 512)
 
 def naming(file_name):
     return file_name[:-6]
@@ -21,11 +21,12 @@ def naming(file_name):
 class CFDataset(data.Dataset):
     """Dataset for CP-VTON.
     """
-    def __init__(self, opt):
+    def __init__(self, opt, is_tops=False):
         super(CFDataset, self).__init__()
         # base setting
         self.opt = opt
         self.root = opt.dataroot
+        self.root_mask = opt.dataroot_mask
         self.datamode = opt.datamode # train or test or self-defined
         self.stage = opt.stage # GMM or TOM
         self.fine_height = opt.fine_height
@@ -52,18 +53,11 @@ class CFDataset(data.Dataset):
         cloth = Image.open(path_cloth).resize(INPUT_SIZE)
         cloth_mask = Image.open(path_mask).resize(INPUT_SIZE)
 
-        if self.opt.stage == "GMM":
-            target_softmax_path = osp.join(self.result_dir+'/PGP', pair+'.jpg')
-
-            if not os.path.exists(target_softmax_path):
-                print(target_softmax_path)
-            warped_cloth_path = osp.join(self.result_dir+'/GMM', pair+'.jpg')
-            # if not os.path.exists(warped_cloth_path):
-            #     print(warped_cloth_path)
-            target_softmax_shape = Image.open(target_softmax_path).resize(INPUT_SIZE)
-            target_softmax_shape = target_softmax_shape.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
-            target_softmax_shape = target_softmax_shape.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-            target_softmax_shape = self.transform(target_softmax_shape).type(torch.float32)
+        output = Image.open(osp.join(self.root_mask,name+".jpg"))
+        output = np.array(output)
+        output = (output > 0).astype(np.float32)
+        output = torch.from_numpy(output)
+        output = output.unsqueeze_(0)
 
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
 
@@ -203,54 +197,14 @@ class CFDataset(data.Dataset):
             im_g = ''
         cloth = cloth.view(1, H, W)
 
-
-        if self.opt.stage == "GMM":
-            result = {
-                'cloth': cloth,
-                'cloth_mask': cloth_mask,
-                'grid_image': im_g,
-                'head': crop_head,
-                'image': image,
-                'pose': pose_map,
-                'shape_sample': shape_sample,
-            }
-            return result
-        elif self.opt.stage == "PGP":
-            result = {
-                'shape_sample': shape_sample,
-            }
-            return result
-        elif self.opt.stage == "Tuning":
-            result = {
-                'shape_sample': shape_sample,
-                'cloth': cloth,
-                'cloth_mask': cloth_mask,
-                'grid_image': im_g,
-                'image': image,
-            }
         result = {
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
             'image': image,  # source image
-            # 'head': crop_head,# cropped head from source image
-            # 'pose': pose_map,#pose map
-            #'shape': shape,
-            # 'shape_sample': shape_sample,
-            #'grid_image': im_g,
-            # if self.opt.stage == "GMM":
-            #     'target_softmax_shape': target_softmax_shape,
-            # 'one_hot': one_hot,# one_hot - body shape
-            # 'upper_mask': cloth,# cropped cloth mask
-            # 'head_mask': head,#head mask
             'crop_cloth': crop_cloth,#cropped cloth
-            'crop_cloth_mask' : cloth,#cropped cloth mask
+            'crop_cloth_mask' : output,#cropped cloth mask
+            # 'crop_cloth_mask' : cloth,#cropped cloth mask
             'name' : name,
-            # 'off_cloth': off_cloth,#source image - cloth
-            # 'cloth_sample': cloth_sample,#coarse cloth mask
-            # 'arms_mask': arms,
-            # 'pants_mask': pants,
-            # 'crop_pants': crop_pants,
-            # 'crop_arms': crop_arms,
             }
         #for i in result.keys():
         #    print("%s - type: %s" %(i,type(result[i])))

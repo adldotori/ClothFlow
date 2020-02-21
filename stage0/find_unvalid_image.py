@@ -1,7 +1,7 @@
 import os
 from PIL import Image
 
-base_dir = "/home/fashionteam/dataset_MVC_bottoms/train/"
+base_dir = "/home/fashionteam/dataset_MVC_tops/train/"
 folder_list = os.listdir(base_dir)
 
 with open('uncomplete.txt','w') as f:

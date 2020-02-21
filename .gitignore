@@ -3,3 +3,6 @@ dataset/
 runs/
 checkpoints/
 backup/
+npz/
+.ipynb_checkpoints/
+result/

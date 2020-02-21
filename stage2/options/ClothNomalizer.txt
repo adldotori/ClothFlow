@@ -1,0 +1,26 @@
+name --- TryOn
+gpu_ids --- 0
+workers --- 1
+batch_size --- 8
+local_rank --- 0
+dataroot --- /home/fashionteam/dataset_MVC_tops
+dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/tops
+datamode --- train
+stage --- 1
+data_list --- MVCtops_pair.txt
+fine_width --- 512
+fine_height --- 512
+radius --- 3
+grid_size --- 5
+lr --- 5e-05
+tensorboard_dir --- tensorboard
+checkpoint_dir --- checkpoints
+result_dir --- result
+checkpoint --- 
+display_count --- 20
+save_count --- 100
+save_img_count --- 10
+shuffle --- False
+exp --- ClothNormalizer_proj_bot
+save_dir --- npz
+naming --- ClothNomalizer

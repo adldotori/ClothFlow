@@ -29,9 +29,6 @@ class timer:
         print("(TIMER %s) Total: %fs, lap: %fs - message: %s" %(flag,current-self.records[flag],current-self.lap_records[flag],message))
         self.lap_records[flag] = current
 
-
-
-
 def naming(pair,position):
     return pair + "-" + position + "-4x_resize.jpg"
 
@@ -44,6 +41,7 @@ class CFDataset(data.Dataset):
         self.is_tops = is_tops
         self.opt = opt
         self.root = opt.dataroot
+        self.root_mask = opt.dataroot_mask
         self.datamode = opt.datamode # train or test or self-defined
         self.stage = opt.stage # GMM or TOM
         self.data_list = opt.datamode+'_'+opt.data_list
@@ -104,7 +102,6 @@ class CFDataset(data.Dataset):
 
         path_c_image = osp.join(self.data_path, pair, naming(pair,c_name)) # condition image path
         path_t_image = osp.join(self.data_path, pair, naming(pair,t_name)) # target image path
-
         c_image = Image.open(path_c_image).resize(INPUT_SIZE)
         t_image = Image.open(path_t_image).resize(INPUT_SIZE)
 
@@ -115,6 +112,12 @@ class CFDataset(data.Dataset):
         c_mask_array = (c_mask_array > 0).astype(np.float32)
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
+
+        output = Image.open(osp.join(self.root_mask,pair+".jpg"))
+        output = np.array(output)
+        output = (output > 0).astype(np.float32)
+        output = torch.from_numpy(output)
+        output = output.unsqueeze_(0)
 
         cloth = self.transform(cloth)
         c_image = self.transform(c_image)
@@ -213,7 +216,10 @@ class CFDataset(data.Dataset):
                   (t_parse_array == 6).astype(np.float32) + \
                   (t_parse_array == 7).astype(np.float32)
 
-        t_pants_mask = (t_parse_array == 9).astype(np.float32)
+        t_pants_mask = (t_parse_array == 9).astype(np.float32) + \
+                  (t_parse_array == 12).astype(np.float32) + \
+                  (t_parse_array == 16).astype(np.float32)
+
         # to obtain the one hot of t_shape, the value of each pixel is 1 or 0
         t_body_parse = t_shape_mask
         #t_body_parse = self.transform_1ch(t_body_parse)
@@ -264,6 +270,7 @@ class CFDataset(data.Dataset):
         """
         #start_time = time.time()
         ###
+
         if self.is_tops:
             with open(path_c_pose, 'rb') as f:
                 pose_label = pickle.load(f)
@@ -292,7 +299,7 @@ class CFDataset(data.Dataset):
                     c_pose_draw.rectangle((c_pointx - r, c_pointy - r, c_pointx + r, c_pointy + r), 'white', 'white')
                 one_map = self.transform_1ch(one_map)
                 c_pose_map[i] = one_map[0]
-
+            c_pose_s = self.transform_1ch(c_pose)
             """
             t_pose_data = - np.ones((18, 2), dtype=int)
             with open(path_t_pose, 'rb') as f:
@@ -329,6 +336,7 @@ class CFDataset(data.Dataset):
                     t_pose_draw.rectangle((t_pointx - r, t_pointy - r, t_pointx + r, t_pointy + r), 'white', 'white')
                 one_map = self.transform_1ch(one_map)
                 t_pose_map[i] = one_map[0]
+            t_pose_s = self.transform_1ch(t_pose)
 
         if self.is_tops:
             target_pose_png_path = osp.join(self.data_path, pair, t_name, "pose.png")
@@ -344,6 +352,8 @@ class CFDataset(data.Dataset):
 
         # cloth-agnostic representation
         c_shape = self.transform_1ch(c_shape)
+        #agnostic = torch.cat([c_shape, t_pose_map], 0)
+        #agnostic_sample = torch.cat([c_shape_sample, t_pose_map], 0)
 
         if self.stage == 'GMM':
             im_g = Image.open('grid_long.png').resize(INPUT_SIZE)
@@ -352,27 +362,32 @@ class CFDataset(data.Dataset):
             im_g = ''
         #c_cloth = c_cloth.view(1, H, W)
 
+
         if self.is_tops:
             result = {
                 'cloth': cloth,
                 'cloth_mask': cloth_mask,
                 'crop_cloth': tar_cloth,
-                'crop_cloth_mask': t_cloth,
-                'crop_pants_mask': t_pants,
+                'crop_cloth_mask': t_cloth,# t_cloth or output
                 'pose': t_pose_map,
+                'pose_png': target_pose_png,
                 'name': pair,
                 'target_body_shape': t_body_parse,
+                'c_pose':  c_pose_map,
+                'c_pose_data': c_pose_s,
+                't_pose': t_pose_map,
+                't_pose_data': t_pose_s,
+                't_name': t_name,
                 }
         else:
             result = {
                 'cloth': cloth,
                 'cloth_mask': cloth_mask,
-                'crop_cloth': tar_cloth,
-                'crop_cloth_mask': t_cloth,
-                'crop_pants_mask': t_pants,
-                't_pants_mask': t_pants_mask,
+                'crop_cloth': tar_pants,
+                'crop_cloth_mask': t_pants,
                 'name': pair,
                 'target_body_shape': t_body_parse,
+                't_name': t_name,
                 }
         
         return result

@@ -8,10 +8,8 @@ def imsave(nparray,fname):
     Image.fromarray(nparray).save(fname)
 
 TARGET_SIZE = (512,512)
-base_dir = "/home/fashionteam/dataset_MVC_bottoms/train/"
+base_dir = "/home/fashionteam/dataset_MVC_tops/test/"
 folder_list = os.listdir(base_dir)
-
-f = open('delet.txt','w')
 
 t = 0
 for i, folder in enumerate(folder_list):
@@ -29,23 +27,21 @@ for i, folder in enumerate(folder_list):
         print(i, image)
         imsave(img, osp.join(base_dir,folder, image.split('.')[0]+'_resize.jpg'))
         
-        if os.path.isdir(os.path.join(base_dir, folder, image.split('-')[1])) and image.split('-')[1] in ['p','1','3']:
-            # if not (osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_resize.jpg')) and osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_vis_resize.jpg'))):
-            print(i,image)
-            try:
-                seg = np.array(Image.open(os.path.join(base_dir, folder, image.split('-')[1], 'segment.png')))
-                seg_vis = np.array(Image.open(os.path.join(base_dir, folder, image.split('-')[1], 'segment_vis.png')))
+        # if os.path.isdir(os.path.join(base_dir, folder, image.split('-')[1])) and image.split('-')[1] in ['p','1','3']:
+        #     # if not (osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_resize.jpg')) and osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_vis_resize.jpg'))):
+        #     print(i,image)
+        #     try:
+        #         seg = np.array(Image.open(os.path.join(base_dir, folder, image.split('-')[1], 'segment.png')))
+        #         seg_vis = np.array(Image.open(os.path.join(base_dir, folder, image.split('-')[1], 'segment_vis.png')))
                 
-                seg = np.pad(seg, ((0,0),(160,160)), 'constant', constant_values=(0))
-                seg = cv2.resize(seg, TARGET_SIZE, interpolation=cv2.INTER_NEAREST)
-                seg_vis = np.pad(seg_vis, ((0,0),(160,160),(0,0)), 'constant', constant_values=(0))
-                seg_vis = cv2.resize(seg_vis, TARGET_SIZE, interpolation=cv2.INTER_NEAREST)
-                imsave(seg, osp.join(base_dir,folder, image.split('-')[1], 'segment_resize.jpg'))
-                imsave(seg_vis, osp.join(base_dir,folder, image.split('-')[1], 'segment_vis_resize.jpg'))
-            except OSError:
-                f.write(image+'\n')
-                print(image)
-        else:
-            print(folder,image,'There is not dir')
-
-f.close()
+        #         seg = np.pad(seg, ((0,0),(160,160)), 'constant', constant_values=(0))
+        #         seg = cv2.resize(seg, TARGET_SIZE, interpolation=cv2.INTER_NEAREST)
+        #         seg_vis = np.pad(seg_vis, ((0,0),(160,160),(0,0)), 'constant', constant_values=(0))
+        #         seg_vis = cv2.resize(seg_vis, TARGET_SIZE, interpolation=cv2.INTER_NEAREST)
+        #         imsave(seg, osp.join(base_dir,folder, image.split('-')[1], 'segment_resize.jpg'))
+        #         imsave(seg_vis, osp.join(base_dir,folder, image.split('-')[1], 'segment_vis_resize.jpg'))
+        #     except OSError:
+        #         f.write(image+'\n')
+        #         print(image)
+        # else:
+        #     print(folder,image,'There is not dir')

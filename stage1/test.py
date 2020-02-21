@@ -9,7 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from Models.UNetS3 import *
 from Models.LossS3 import *
+from Models.net_canny import *
+from Models.loss_canny import *
 from dataloader_MVC import *
+from utils import *
 import argparse
 from tqdm import tqdm
 from torchvision.utils import save_image
@@ -19,29 +22,41 @@ from tensorboardX import SummaryWriter
 import sys
 import time
 
-EPOCHS = 15
-PYRAMID_HEIGHT = 4
-IS_TOPS = False # TOPS or BOTTOMS 
+PYRAMID_HEIGHT = 5
+DATASET = 'viton'
+IS_TOPS = True
 
-if IS_TOPS:
-    dataroot = '/home/fashionteam/dataset_MVC_tops/'
-    datalist = 'MVCtops_pair.txt'
-    exp = 'test/tops/'
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/tops/'
-    in_channels = 22
+if DATASET is 'MVC':
+    from dataloader_MVC import *
+    if IS_TOPS:
+        stage = 'tops'
+        in_channels = 22
+        init_checkpoint = 'stage1_top_512.pth'
+    else:
+        stage = 'bottoms'
+        in_channels = 2
+        init_checkpoint = 'stage1_bot_512.pth'
+    dataroot = '/home/fashionteam/dataset_MVC_'+stage
+    datalist = 'MVC'+stage+'_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage1/checkpoints/mvc/'+stage
+    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+    exp = 'train/'+stage
 else:
-    dataroot = '/home/fashionteam/dataset_MVC_bottoms/'
-    datalist = 'MVCbottoms_pair.txt'
-    exp = 'test/bottoms/'
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/bottoms/'
-    in_channels = 2
+    from dataloader_viton import *
+    dataroot = '/home/fashionteam/viton_resize/'
+    datalist = ''
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage1/checkpoints/viton/'
+    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask_viton/'
+    exp = 'viton/'
+    in_channels = 22
+    init_checkpoint = 'stage1_top_512.pth'
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=8)
+    parser.add_argument('-b', '--batch_size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -53,7 +68,7 @@ def get_opt():
     parser.add_argument("--grid_size", type=int, default = 5)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
-    parser.add_argument('--checkpoint_dir', type=str, default='/home/fashionteam/ClothFlow/stage1/checkpoints', help='save checkpoint infos')
+    parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
     parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
@@ -65,21 +80,6 @@ def get_opt():
 
     opt = parser.parse_args()
     return opt
-
-def save_checkpoint(model, save_path):
-    if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
-
-    torch.save(model.cpu().state_dict(), save_path)
-    model.cuda()
-
-def load_checkpoint(model, checkpoint_path):
-    if not os.path.exists(checkpoint_path):
-        print(1/0)
-        print("ERROR")
-        return 
-    model.load_state_dict(torch.load(checkpoint_path))	
-    model.cuda()
 
 def save_images(img_tensors, img_names, save_dir):
     for img_tensor, img_name in zip(img_tensors, img_names):
@@ -105,20 +105,13 @@ def WriteImage(writer,name,data,cnt):
 
 def test(opt):
 
-    model = UNet(opt, in_channels=in_channels)
-    model = nn.DataParallel(model,output_device=0)
-    load_checkpoint(model, "../backup/stage1_bot_512.pth")
+    model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
+    model = nn.DataParallel(model)
+    load_checkpoint(model, "../backup/"+init_checkpoint)
     model.cuda()
-    model.train()
+    model.eval()
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
-
-    #theta_generator = ClothNormalizer()
-    #load_checkpoint(theta_generator,"/home/fashionteam/ClothFlow/Lab/saved/G_theta_affine.pth")
-    #theta_generator.cuda()
-    #theta_generator.eval()
-    
-    #Flow = FlowLoss(opt).cuda()
 
     writer = SummaryWriter("/home/fashionteam/ClothFlow/stage1/runs/"+opt.exp)
     rLoss = renderLoss()
@@ -142,9 +135,9 @@ def test(opt):
             tar_body_mask = inputs['target_body_shape'].cuda()
 
         if IS_TOPS:
-            result = model(con_cloth, con_cloth_mask, pose)
+            result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
         else:
-            result = model(con_cloth_mask, tar_body_mask, None)
+            result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
 
         loss = rLoss(result, tar_cloth_mask)
 

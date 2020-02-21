@@ -52,6 +52,7 @@ class Sobel(nn.Module):
 		return y[labels]
 	def clipped_div(self, x, y, clip_val):
 		eps = torch.ones(y.shape) * 1e-9
+		eps = eps.cuda()
 		y_tr = torch.where(y==0.0, eps, y)
 		div = x / y_tr # check
 		div_clipped = torch.clamp(div, -clip_val, clip_val)
@@ -166,24 +167,22 @@ class NonMaximumSuppression(nn.Module):
 		self.maxpool = nn.MaxPool2d(kernel_size=3)
 
 	def forward(self, x, mask):
-		mask1 = torch.from_numpy(mask[0]).unsqueeze(0)
-		mask2 = torch.from_numpy(mask[1]).unsqueeze(0)
-		mask3 = torch.from_numpy(mask[2]).unsqueeze(0)
+		mask1 = torch.from_numpy(mask[0]).unsqueeze(0).cuda()
+		mask2 = torch.from_numpy(mask[1]).unsqueeze(0).cuda()
+		mask3 = torch.from_numpy(mask[2]).unsqueeze(0).cuda()
 
-		batch, H, W = x.shape
-		x = x.view(batch,1,H,W)
 		output1 = F.conv2d(x, mask1.view(1,1,3,3),padding=1)
 		output2 = F.conv2d(x, mask2.view(1,1,3,3),padding=1)
 		output3 = F.conv2d(x, mask3.view(1,1,3,3),padding=1)
 		temp = torch.cat([output1,output2,output3],1)
-		out = torch.max(temp,axis=1)[0]
+		out = torch.max(temp,axis=1)[0].unsqueeze(1)
 		return (out == x).type(torch.float32)*x
 
 class Multiply(nn.Module):
 	def __init__(self):
 		super(Multiply, self).__init__()
 	def forward(self, x):
-		result = torch.ones(x[0].size())
+		result = torch.ones(x[0].size()).cuda()
 		for t in x:
 			result *= t
 		return result
@@ -192,7 +191,7 @@ class Addition(nn.Module):
 	def __init__(self):
 		super(Addition, self).__init__()
 	def forward(self, x):
-		result = torch.zeros(x[0].size())
+		result = torch.zeros(x[0].size()).cuda()
 		for t in x:
 			result += t
 		return result
@@ -201,7 +200,8 @@ class ThresholdLayer(nn.Module):
 	def __init__(self):
 		super(ThresholdLayer, self).__init__()
 	def relu_t(self, x, t):
-		mint = torch.ones(x.shape) * 1e-9
+		mint = torch.ones(x.shape,requires_grad=True) * 1e-9
+		mint = mint.cuda()
 		return torch.where(x>=t, x, mint)
 	def forward(self, x, thres):
 		outputs = self.relu_t(x, thres)
@@ -234,7 +234,7 @@ class Canny(nn.Module):
 		self.suppressed = suppressed
 
 		low_thresh = self.threshold(suppressed, low_threshold)
-		
+		print("*******************shape: {}".format(low_thresh.shape))
 		return low_thresh
 
 
@@ -253,7 +253,7 @@ def g(x,deg=20):
     return 1 - f(x,deg) - h(x,deg)
 
 def sample_gumbel(shape, eps=1e-30):
-    U = torch.rand(shape)#.cuda()
+    U = torch.rand(shape).cuda()
     return -Variable(torch.log(-torch.log(U + eps) + eps))
 
 def gumbel_softmax_sample(logits, temperature):
@@ -288,7 +288,7 @@ def threshold_process(G,b_lower,b_upper,repeat = 10):
     one_hot = gumbel_softmax(G_,1e-30)
     one_hot = one_hot.view(a,b,c,d)
     one_hot = one_hot.transpose(2,3).transpose(1,2)
-    W = torch.tensor([[[[2.0]],[[1.0]],[[0.0]]]])#.cuda()
+    W = torch.tensor([[[[2.0]],[[1.0]],[[0.0]]]]).cuda()
     B = F.conv2d(one_hot,W)
     #return F.relu(B - 1)
     for i in range(repeat):
@@ -313,7 +313,6 @@ class Canny_full(nn.Module):
 
 if __name__ == "__main__":
 	torch.manual_seed(4)
-	x = torch.rand(2, 3, 192, 256)
+	x = torch.rand(2, 3, 512, 512)
 	model = Canny()
 	model(x, 20)
-

@@ -1,16 +1,15 @@
 import os
 import random
 
-data_root = "/home/fashionteam/dataset_MVC_bottoms/train/"
+base_dir = "/home/fashionteam/dataset_MVC_bottoms/train/"
 
-
-lidi = os.listdir(data_root)
+lidi = os.listdir(base_dir)
 f = open("../train_MVCbottoms_pair.txt", 'wt')
 g = open("delete.txt",'r')
 delete = g.read()
 print(delete)
 for i in range(len(lidi)):
-    tedi = os.listdir(data_root+lidi[i]+"/")
+    tedi = os.listdir(base_dir+lidi[i]+"/")
     rind =  random.randint(0,1)
     rind = 2*rind + 1
     if lidi[i] in delete:

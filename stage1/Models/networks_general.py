@@ -42,7 +42,7 @@ def weights_init_kaiming(m):
 
 
 def init_weights(net, init_type='normal'):
-    print('initialization method [%s]' % init_type)
+    # print('initialization method [%s]' % init_type)
     if init_type == 'normal':
         net.apply(weights_init_normal)
     elif init_type == 'xavier':

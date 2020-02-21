@@ -10,53 +10,66 @@ import numpy as np
 from sys import getsizeof
 
 from Models.networks import *
-from dataloader_viton import *
+from utils import *
 import argparse
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 from torchvision.utils import save_image
 
 from tensorboardX import SummaryWriter
-from ClothNormalize import ClothNormalizer
+# from Models.ClothNormalize import ClothNormalizer
+from Models.ClothNormalize_proj import *
 
 EPOCHS = 10
-PYRAMID_HEIGHT = 4
-IS_TOPS = True
+PYRAMID_HEIGHT = 5
+DATASET = 'MVC'
+IS_TOPS = False
 
-if IS_TOPS:
-    dataroot = '/home/fashionteam/dataset_MVC_tops/'
-    datalist = 'MVCtops_pair.txt'
+if DATASET is 'MVC':
+    from dataloader_MVC import *
+    if IS_TOPS:
+        stage = 'tops'
+        nc = 36
+    else:
+        stage = 'bottoms'
+        nc = 2
+    dataroot = '/home/fashionteam/dataset_MVC_'+stage
+    dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+    datalist = 'MVC'+stage+'_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
+    exp = 'train/'+stage
+else:
+    from dataloader_viton import *
+    dataroot = '/home/fashionteam/viton_resize/'
+    datalist = ''
     checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
     exp = 'train/tops/'
-else:
-    dataroot = '/home/fashionteam/dataset_MVC_bottoms/'
-    datalist = 'MVCbottoms_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/bottoms/'
-    exp = 'train/bottoms/'
+   
     
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "1")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=3)
+    parser.add_argument('-b', '--batch_size', type=int, default=2)
     parser.add_argument('--local_rank', type=int, default=0)
     
     parser.add_argument("--dataroot", default = dataroot)
+    parser.add_argument("--dataroot_mask", default = dataroot_mask)
     parser.add_argument("--datamode", default = "train")
-    parser.add_argument("--stage", default = "1")
+    parser.add_argument("--stage", default = stage)
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--grid_size", type=int, default = 10)
-    parser.add_argument('--lr', type=float, default=0.000001, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.00003, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
     parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 1)
     parser.add_argument("--save_count", type=int, default = 100)
-    parser.add_argument("--save_img_count", type=int, default = 5)
+    parser.add_argument("--save_img_count", type=int, default = 50)
     parser.add_argument("--loss_count", type=int, default = 10)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
@@ -80,22 +93,23 @@ def save_checkpoint(model, save_path):
 def load_checkpoint(model, checkpoint_path, strict=True):
     if not os.path.exists(checkpoint_path):
        print("ERROR")
+       print(1/0)
        return 
     model.load_state_dict(torch.load(checkpoint_path),strict=strict)	
 
 def train(opt):
-    model = FlowNet(5)
+    model = FlowNet(PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
-    load_checkpoint(model, "./backup/init_5_512.pth", False)
+    load_checkpoint(model, "../backup/init_5_512.pth")
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
 
-    train_dataset = CFDataset(opt)
+    train_dataset = CFDataset(opt, is_tops=IS_TOPS)
     train_loader = CFDataLoader(opt, train_dataset)
     
-    theta_generator = ClothNormalizer(depth=5)
-    load_checkpoint(theta_generator,"./backup/G_theta_affine_512.pth")
+    theta_generator = ClothNormalizer(depth=PYRAMID_HEIGHT, nc=nc)
+    load_checkpoint(theta_generator,"checkpoints/ClothNormalizer_proj_bot/Epoch:3_00210.pth")
     theta_generator.cuda()
     theta_generator.eval()
 
@@ -106,7 +120,7 @@ def train(opt):
     # write options in text file
     if not os.path.exists("./options"): os.mkdir("./options")	
     f = open("./options/{}.txt".format(opt.naming), "w")
-    temp_opt = vars(opt)
+    temp_opt = vars(opt) 
     for key in temp_opt:
        val = temp_opt[key]
        f.write("{} --- {}\n".format(key, val))
@@ -122,10 +136,19 @@ def train(opt):
             con_cloth_mask = inputs['cloth_mask'].cuda()
             tar_cloth = inputs['crop_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+            if IS_TOPS:
+                c_pose = inputs['c_pose'].cuda()
+                t_pose = inputs['t_pose'].cuda()
 
-            theta = theta_generator(con_cloth_mask,tar_cloth_mask)
-            grid1 = Ft.affine_grid(theta, con_cloth_mask.shape)
-            grid2 = Ft.affine_grid(theta, con_cloth.shape)
+                theta = theta_generator(c_pose,t_pose)
+            else:
+                theta = theta_generator(con_cloth_mask, tar_cloth_mask)
+
+            print(theta)
+            print(theta.shape, con_cloth_mask.shape)
+            grid1 = projection_grid(theta, con_cloth_mask.shape)
+            grid2 = projection_grid(theta, con_cloth.shape)
+            print(grid1.shape)
             con_cloth_mask = Ft.grid_sample(con_cloth_mask , grid1).detach()
             con_cloth = Ft.grid_sample(con_cloth , grid2,padding_mode="border").detach()
         
@@ -170,6 +193,6 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.naming, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '1'
     opt = get_opt()
     train(opt)

@@ -8,8 +8,9 @@ import shutil
 import cv2
 
 TARGET_SIZE = (512,512)
-dataroot = "/home/fashionteam/dataset_MVC_bottoms/train/"
-
+IS_TOPS = True
+dataroot = "/home/fashionteam/dataset_MVC_tops/train/"
+print(IS_TOPS)
 def naming(pair,position):
     return pair + "-" + position + "-4x.jpg"
 
@@ -62,8 +63,12 @@ def filter(np2darray):
     np2darray_ = np.reshape(np2darray,(a,b,1))
     return np.concatenate((np2darray_,np2darray_,np2darray_),axis=2)
 
-Color = [[0,85,85]]
-# orange, lightblue,navy
+
+if IS_TOPS:
+    Color = [[255,85,0],[0,119,221],[0,0,85]]
+    # orange, lightblue,navy
+else:
+    Color = [[0,85,85]]
 
 
 lidi = os.listdir(dataroot)
@@ -71,7 +76,6 @@ make_mask = True
 make_crop = True
 
 for i in range(len(lidi)):
-    
     try:
         seg = get_vis(lidi[i],"p")
         img = get_img(lidi[i],"p")
@@ -84,24 +88,29 @@ for i in range(len(lidi)):
     for colour in Color:
         temp.append(existColor(seg,colour))
     # print(temp)
-    if len(temp[0][temp[0]==True]) == 0:
+
+    check = True
+    for j in range(len(temp)):
+        if not len(temp[j][temp[j]==True]) == 0:
+            check = False
+    if check:
         f = open('delete.txt','a')
         print(i, lidi[i])
         f.write(lidi[i]+'\n')
         f.close()
-    # mask = logical_or(temp)
+    mask = logical_or(temp)
     if make_crop:
         filt = filter(mask)
         img = filt * img
         img_ori = np.pad(img, ((0,0),(160,160),(0,0)), 'constant', constant_values=(0))
         img_ori = cv2.resize(img_ori, TARGET_SIZE)
         imsave(img_ori, osp.join(dataroot,lidi[i],"crop.png"))
-        img = cv2.resize(img, (192, 256))
-        imsave(img, osp.join(dataroot,lidi[i],"crop_min.png"))
+        # img = cv2.resize(img, (192, 256))
+        # imsave(img, osp.join(dataroot,lidi[i],"crop_min.png"))
     if make_mask:
         A = mask.astype(np.uint8) * 25
         A_ori = np.pad(A, ((0,0),(160,160)), 'constant', constant_values=(0))
         A_ori = cv2.resize(A_ori, TARGET_SIZE)
         imsave(A_ori, osp.join(dataroot,lidi[i],"mask.png"))
-        A = cv2.resize(A, (192, 256))
-        imsave(A , osp.join(dataroot,lidi[i],"mask_min.png"))
+        # A = cv2.resize(A, (192, 256))
+        # imsave(A , osp.join(dataroot,lidi[i],"mask_min.png"))

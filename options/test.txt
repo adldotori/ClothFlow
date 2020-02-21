@@ -1,0 +1,27 @@
+name --- TryOn
+gpu_ids --- 0
+workers --- 1
+batch_size --- 12
+dataroot --- /home/fashionteam/viton_resize/train/
+datamode --- 
+stage --- 1
+data_list --- MVCup_pair.txt
+fine_width --- 192
+fine_height --- 256
+radius --- 3
+grid_size --- 5
+lr --- 0.0002
+tensorboard_dir --- tensorboard
+checkpoint_dir --- checkpoints
+result_dir --- result
+checkpoint --- 
+display_count --- 20
+save_count --- 50
+shuffle --- False
+smt_loss --- 2
+perc_loss --- 1
+struct_loss --- 10
+stat_loss --- 0
+abs_loss --- 0
+save_dir --- None
+naming --- test

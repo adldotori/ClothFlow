@@ -14,17 +14,37 @@ import argparse
 from tqdm import tqdm_notebook
 from torchvision.utils import save_image
 
-from tensorboardX import SummaryWriter
+from tensorboardX import SummaryWriters
 import sys
-sys.path.append("/home/fashionteam/ClothFlow")
 from Lab.ClothNormalize import ClothNormalizer
 import time
 import pickle
 
-INPUT_SIZE = (192, 256)
 EPOCHS = 18
 PYRAMID_HEIGHT = 5
+DATASET = 'MVC'
+IS_TOPS = False
 
+if DATASET is 'MVC':
+    from dataloader_MVC import *
+    if IS_TOPS:
+        stage = 'tops'
+        nc = 36
+    else:
+        stage = 'bottoms'
+        nc = 2
+    dataroot = '/home/fashionteam/dataset_MVC_'+stage
+    dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+    datalist = 'MVC'+stage+'_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
+    exp = 'train/'+stage
+else:
+    from dataloader_viton import *
+    dataroot = '/home/fashionteam/viton_resize/'
+    datalist = ''
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
+    exp = 'train/tops/'
+   
 
 
 def get_opt():
@@ -35,8 +55,8 @@ def get_opt():
     parser.add_argument('-b', '--batch_size', type=int, default=12)
     
     parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/")
-    parser.add_argument("--warped_cloth_path", type=str, default="/home/fashionteam/ClothFlow/warped_cloth")
-    parser.add_argument("--warped_mask_path", type=str, default="/home/fashionteam/ClothFlow/warped_mask")
+    parser.add_argument("--warped_cloth_path", type=str, default=osp.join(PWD,"result/warped_cloth"))
+    parser.add_argument("--warped_mask_path", type=str, default=osp.join(PWD,"result/warped_mask"))
     parser.add_argument("--datamode", default = "train")
     parser.add_argument("--stage", default = "stage3")
     parser.add_argument("--data_list", default = "MVCup_pair.txt")

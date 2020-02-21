@@ -12,7 +12,7 @@ import json
 import pickle
 
 #import time
-INPUT_SIZE = (1024, 1024)
+INPUT_SIZE = (512, 512)
 
 def naming(file_name):
     return file_name[:6]
@@ -20,7 +20,7 @@ def naming(file_name):
 class CFDataset(data.Dataset):
     """Dataset for CP-VTON.
     """
-    def __init__(self, opt):
+    def __init__(self, opt, is_tops=True):
         super(CFDataset, self).__init__()
         # base setting
         self.opt = opt
