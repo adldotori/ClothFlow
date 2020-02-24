@@ -14,47 +14,39 @@ import os
 from tensorboardX import SummaryWriter
 
 from Models.networks import *
-from dataloader_viton import *
 from Models.ClothNormalize_proj import *
+from dataloader_MVC import *
+
 sys.path.append('..')
 from utils import *
 
 PYRAMID_HEIGHT = 5
-DATASET = 'MVC'
-IS_TOPS = False
 
-if DATASET is 'MVC':
-    from dataloader_MVC import *
-    if IS_TOPS:
-        stage = 'tops'
-        nc = 36
-    else:
-        stage = 'bottoms'
-        nc = 2
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
-    datalist = 'MVC'+stage+'_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth/'+stage
-    exp = 'train/'+stage
+if IS_TOPS:
+    stage = 'tops'
+    nc = 2
+    init_checkpoint = 'stage2_top_512.pth'
+    init_CN = 'CN_top.pth'
 else:
-    from dataloader_viton import *
-    dataroot = '/home/fashionteam/viton_resize/'
-    datalist = ''
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth/viton/'
-    exp = 'train/tops/'
+    stage = 'bottoms'
+    nc = 2
+    init_checkpoint = 'stage2_bot_512.pth'
+    init_CN = 'CN_bot.pth'
+
+dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+datalist = 'train_MVC'+stage+'_pair.txt'
+checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth_1/'+stage
+exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default = "TryOn")
-    parser.add_argument("--gpu_ids", default = "0")
-    parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=1)
+    parser.add_argument('-b', '--batch-size', type=int, default=2)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
-    parser.add_argument("--datamode", default = "train")
+    parser.add_argument("--datamode", default = "test")
     parser.add_argument("--stage", default = stage)
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
@@ -66,9 +58,9 @@ def get_opt():
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
     parser.add_argument('--checkpoint', type=str, default=checkpoint_dir, help='model checkpoint for initialization')
-    parser.add_argument("--display_count", type=int, default = 20)
+    parser.add_argument("--display_count", type=int, default = 1)
     parser.add_argument("--save_count", type=int, default = 1)
-    parser.add_argument("--save_img_count", type=int, default = 50)
+    parser.add_argument("--save_img_count", type=int, default = 1)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
 
     parser.add_argument("--smt_loss", type=float, default=2)
@@ -101,7 +93,7 @@ def test(opt):
     model = FlowNet(PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
 
-    load_checkpoint(model, "stage2/checkpoints/default/tops/1_02700.pth")
+    load_checkpoint(model, "backup/"+init_checkpoint)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
@@ -115,7 +107,7 @@ def test(opt):
         os.makedirs(opt.result_dir)
 
     theta_generator = ClothNormalizer(depth=PYRAMID_HEIGHT, nc=nc)
-    load_checkpoint(theta_generator,"stage2/checkpoints/ClothNormalizer_proj_bot/Epoch:3_00210.pth")
+    load_checkpoint(theta_generator,"backup/"+init_CN)
     theta_generator.cuda()
     theta_generator.eval()
 
@@ -140,7 +132,7 @@ def test(opt):
     
         [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
         
-        if (step+1) % opt.save_img_count == 0:
+        if cnt % opt.save_img_count == 0:
             writer.add_images("con_cloth", con_cloth, cnt)
             writer.add_images("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
             writer.add_images("tar_cloth", tar_cloth, cnt)
@@ -150,13 +142,14 @@ def test(opt):
                 
         loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
 
-        if (step+1) % opt.display_count == 0:
+        if cnt % opt.display_count == 0:
             print('Test: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                 (step+1) * 1, len(test_loader.dataset),
-                100. * (step+1) / len(test_loader.dataset), loss.item()))
+                 cnt, len(test_loader.dataset),
+                100. * cnt / len(test_loader.dataset), loss.item()))
 
         save_images(warp_cloth, name, os.path.join(opt.result_dir))
 
 if __name__ == '__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
     opt = get_opt()
     test(opt)

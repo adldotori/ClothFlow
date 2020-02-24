@@ -29,6 +29,9 @@ class timer:
         print("(TIMER %s) Total: %fs, lap: %fs - message: %s" %(flag,current-self.records[flag],current-self.lap_records[flag],message))
         self.lap_records[flag] = current
 
+
+
+
 def naming(pair,position):
     return pair + "-" + position + "-4x_resize.jpg"
 
@@ -42,9 +45,10 @@ class CFDataset(data.Dataset):
         self.opt = opt
         self.root = opt.dataroot
         self.root_mask = opt.dataroot_mask
+        self.root_cloth = opt.dataroot_cloth
         self.datamode = opt.datamode # train or test or self-defined
         self.stage = opt.stage # GMM or TOM
-        self.data_list = opt.datamode+'_'+opt.data_list
+        self.data_list = opt.data_list
         #print(self.data_list)
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
@@ -85,26 +89,10 @@ class CFDataset(data.Dataset):
         cloth = Image.open(path_cloth).resize(INPUT_SIZE)
         cloth_mask = Image.open(path_mask).resize(INPUT_SIZE)
 
-        """
-        if self.opt.stage == "GMM":
-            target_softmax_path = osp.join(self.result_dir+'/PGP', pair+'.jpg')
-
-            if not os.path.exists(target_softmax_path):
-                print(target_softmax_path)
-            warped_cloth_path = osp.join(self.result_dir+'/GMM', pair+'.jpg')
-            # if not os.path.exists(warped_cloth_path):
-            #     print(warped_cloth_path)
-            target_softmax_shape = Image.open(target_softmax_path)
-            target_softmax_shape = target_softmax_shape.resize((self.fine_width // 16, self.fine_height // 16), Image.BILINEAR)
-            target_softmax_shape = target_softmax_shape.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-            target_softmax_shape = self.transform(target_softmax_shape).type(torch.float32)
-        """
-
         path_c_image = osp.join(self.data_path, pair, naming(pair,c_name)) # condition image path
         path_t_image = osp.join(self.data_path, pair, naming(pair,t_name)) # target image path
         c_image = Image.open(path_c_image).resize(INPUT_SIZE)
         t_image = Image.open(path_t_image).resize(INPUT_SIZE)
-
 
         H, W, C = np.array(c_image).shape###
 
@@ -113,18 +101,15 @@ class CFDataset(data.Dataset):
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
 
-        output = Image.open(osp.join(self.root_mask,pair+".jpg"))
-        output = np.array(output)
-        output = (output > 0).astype(np.float32)
-        output = torch.from_numpy(output)
-        output = output.unsqueeze_(0)
+        warped = Image.open(osp.join(self.root_cloth,pair+".jpg"))
+        warped_mask = Image.open(osp.join(self.root_mask,pair+".jpg"))
+        warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
 
         cloth = self.transform(cloth)
         c_image = self.transform(c_image)
         t_image = self.transform(t_image)
-
+        warped = self.transform(warped)
         
-
         # conditionnal parsing and pose path
         path_c_seg = osp.join(self.data_path, pair, c_name, "segment_resize.png")
         if self.is_tops:
@@ -161,12 +146,11 @@ class CFDataset(data.Dataset):
                  (c_parse_array == 4).astype(np.float32) + \
                  (c_parse_array == 13).astype(np.float32)
         """
+        
+        c_shape = (c_parse_array > 0).astype(np.float32)  # condition body shape
         c_cloth = (c_parse_array == 5).astype(np.float32) + \
                   (c_parse_array == 6).astype(np.float32) + \
                   (c_parse_array == 7).astype(np.float32)
-        
-
-
 
         c_body_shape = c_shape
         c_shape_array = np.asarray(c_body_shape)
@@ -205,25 +189,43 @@ class CFDataset(data.Dataset):
         #t_parse = torch.zeros(H*W, 30).scatter_(1, t_parse_fla, 1)
         #t_parse = t_parse.view(H, W, 30)
         #t_parse = t_parse.transpose(2, 0).transpose(1, 2).contiguous()
-        t_shape_mask = (t_parse_array > 0).astype(np.float32)
-        """
-        t_head_mask = (t_parse_array == 1).astype(np.float32) + \
+        
+        t_shape = (t_parse_array > 0).astype(np.float32)  # condition body shape
+        t_head = (t_parse_array == 1).astype(np.float32) + \
                  (t_parse_array == 2).astype(np.float32) + \
                  (t_parse_array == 4).astype(np.float32) + \
                  (t_parse_array == 13).astype(np.float32)
-        """
-        t_cloth_mask = (t_parse_array == 5).astype(np.float32) + \
+        t_cloth = (t_parse_array == 5).astype(np.float32) + \
                   (t_parse_array == 6).astype(np.float32) + \
                   (t_parse_array == 7).astype(np.float32)
 
-        t_pants_mask = (t_parse_array == 9).astype(np.float32) + \
+        t_arms = (t_parse_array == 15).astype(np.float32) + \
+                  (t_parse_array == 14).astype(np.float32)
+        
+        t_pants = (t_parse_array == 9).astype(np.float32) + \
                   (t_parse_array == 12).astype(np.float32) + \
                   (t_parse_array == 16).astype(np.float32)
 
         # to obtain the one hot of t_shape, the value of each pixel is 1 or 0
-        t_body_parse = t_shape_mask
-        #t_body_parse = self.transform_1ch(t_body_parse)
+        t_body_parse = t_shape
+        # #t_body_parse = self.transform_1ch(t_body_parse)
         t_body_parse = torch.from_numpy(t_body_parse)
+
+        head = torch.from_numpy(t_head)
+        crop_cloth = torch.from_numpy(t_cloth)
+        warped_mask = torch.from_numpy(warped_mask)
+        arms = torch.from_numpy(t_arms)
+        pants = torch.from_numpy(t_pants)
+        #shape = torch.from_numpy(shape)
+        # cloth_sample = self.transform_1ch(cloth_sample)
+        #c_cloth_sample = self.transform(c_cloth_sample)
+
+        
+        crop_head = t_image * head + (1 - head)
+        crop_cloth = t_image * crop_cloth + (1 - crop_cloth)
+        off_cloth = t_image * (1-warped_mask) + warped_mask
+        crop_arms = t_image * arms + (1-arms)
+        crop_pants = t_image * pants + (1-pants)
         #print(t_body_parse.shape)
         
         t_body_parse = t_body_parse.view((1,self.fine_height,self.fine_width))
@@ -251,13 +253,6 @@ class CFDataset(data.Dataset):
         tar_cloth = t_image * t_cloth + (1 - t_cloth)
 
         """
-        t_cloth = torch.from_numpy(t_cloth_mask)
-        t_cloth = t_cloth.view(1, H, W)
-        tar_cloth = t_image * t_cloth
-       
-        t_pants = torch.from_numpy(t_pants_mask)
-        t_pants = t_pants.view(1, H, W)
-        tar_pants = t_image * t_pants
         
         """
         c_pose_data = - np.ones((18, 2), dtype=int)
@@ -315,8 +310,6 @@ class CFDataset(data.Dataset):
             t_pose_data = pose_label
         ###
 
-
-
             point_num = 18
             t_pose_map = torch.zeros(point_num, H, W)
             r = self.radius
@@ -355,28 +348,32 @@ class CFDataset(data.Dataset):
         #agnostic = torch.cat([c_shape, t_pose_map], 0)
         #agnostic_sample = torch.cat([c_shape_sample, t_pose_map], 0)
 
-        if self.stage == 'GMM':
-            im_g = Image.open('grid_long.png').resize(INPUT_SIZE)
-            im_g = self.transform(im_g)
-        else:
-            im_g = ''
-        #c_cloth = c_cloth.view(1, H, W)
-
-
         if self.is_tops:
             result = {
                 'cloth': cloth,
-                'cloth_mask': cloth_mask,
-                'crop_cloth': tar_cloth,
-                'crop_cloth_mask': t_cloth,# t_cloth or output
-                'pose': t_pose_map,
-                'pose_png': target_pose_png,
-                'name': pair,
-                'target_body_shape': t_body_parse,
-                'c_pose':  c_pose_map,
-                'c_pose_data': c_pose_s,
-                't_pose': t_pose_map,
-                't_pose_data': t_pose_s,
+                'cloth_mask': cloth_mask,# original cloth mask
+                'image': t_image,  # source image
+                'head': crop_head,# cropped head from source image
+                'pose': t_pose_map,#pose map
+                'shape': t_shape,
+                # 'shape_sample': shape_sample,
+                #'grid_image': im_g,
+                # if self.opt.stage == "GMM":
+                #     'target_softmax_shape': target_softmax_shape,
+                # 'one_hot': one_hot,# one_hot - body shape
+                'upper_mask': cloth,# cropped cloth mask
+                # 'head_mask': head,#head mask
+                'crop_cloth': crop_cloth,#cropped cloth
+                'crop_cloth_mask' : cloth,#cropped cloth mask
+                'name' : pair,
+                'warped' : warped,
+                'off_cloth': off_cloth,#source image - cloth
+                # 'parse' : t_parse,
+                # 'cloth_sample': cloth_sample,#coarse cloth mask
+                # 'arms_mask': arms,
+                'pants_mask': pants,
+                'crop_pants': crop_pants,
+                'crop_arms': crop_arms,
                 't_name': t_name,
                 }
         else:

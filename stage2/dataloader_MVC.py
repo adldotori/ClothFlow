@@ -47,7 +47,7 @@ class CFDataset(data.Dataset):
         self.root_mask = opt.dataroot_mask
         self.datamode = opt.datamode # train or test or self-defined
         self.stage = opt.stage # GMM or TOM
-        self.data_list = opt.datamode+'_'+opt.data_list
+        self.data_list = opt.data_list
         #print(self.data_list)
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width

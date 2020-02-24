@@ -1,8 +1,9 @@
 __pycache__/
 dataset/
-runs/
+*runs/
 checkpoints/
 backup/
 npz/
 .ipynb_checkpoints/
 result/
+test/

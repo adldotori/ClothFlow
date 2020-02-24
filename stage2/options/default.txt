@@ -1,13 +1,13 @@
 name --- TryOn
 gpu_ids --- 1
 workers --- 1
-batch_size --- 2
+batch_size --- 3
 local_rank --- 0
 dataroot --- /home/fashionteam/dataset_MVC_bottoms
 dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/bottoms
 datamode --- train
 stage --- bottoms
-data_list --- MVCbottoms_pair.txt
+data_list --- train_MVCbottoms_pair.txt
 fine_width --- 512
 fine_height --- 512
 radius --- 5
@@ -19,7 +19,7 @@ result_dir --- result
 checkpoint --- 
 display_count --- 1
 save_count --- 100
-save_img_count --- 5
+save_img_count --- 50
 loss_count --- 10
 shuffle --- False
 smt_loss --- 2

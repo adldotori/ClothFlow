@@ -7,36 +7,61 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
+sys.path.append('..')
+from utils import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_viton import *
+from dataloader_MVC import *
 import argparse
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 from torchvision.utils import save_image
 
 from tensorboardX import SummaryWriter
-import sys
-sys.path.append("/home/fashionteam/ClothFlow")
-from Lab.ClothNormalize import ClothNormalizer
 import time
+import pickle
 
-EPOCHS = 15
+EPOCHS = 20
 PYRAMID_HEIGHT = 5
+DATASET = 'MVC'
+IS_TOPS = True
+
+if DATASET is 'MVC':
+    from dataloader_MVC import *
+    if IS_TOPS:
+        stage = 'tops'
+    else:
+        stage = 'bottoms'
+    dataroot = '/home/fashionteam/dataset_MVC_'+stage
+    dataroot_mask = osp.join(PWD,"result/warped_mask",stage)
+    dataroot_cloth = osp.join(PWD,"result/warped_cloth",stage)
+    datalist = 'train_MVC'+stage+'_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/'+stage
+    exp = 'train/'+stage
+else:
+    from dataloader_viton import *
+    dataroot = '/home/fashionteam/viton_resize/'
+    datalist = ''
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/tops/'
+    exp = 'train/tops/'
+   
+
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=12)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
     
-    parser.add_argument("--dataroot", default = "/home/fashionteam/viton_resize/train/")
-    parser.add_argument("--warped_path", type=str, default="/home/fashionteam/ClothFlow/test/4_00980.pth/")
-    parser.add_argument("--datamode", default = "")
-    parser.add_argument("--stage", default = "stage3")
-    parser.add_argument("--data_list", default = "MVCup_pair.txt")
-    parser.add_argument("--fine_width", type=int, default = 192)
-    parser.add_argument("--fine_height", type=int, default = 256)
+    parser.add_argument("--dataroot", default = dataroot)
+    parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
+    parser.add_argument("--dataroot_cloth", type=str, default=dataroot_cloth)
+    parser.add_argument("--datamode", default = "train")
+    parser.add_argument("--stage", default = stage)
+    parser.add_argument("--data_list", default = datalist)
+    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
+    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
@@ -54,54 +79,53 @@ def get_opt():
     parser.add_argument("--struct_loss", type=float, default=1.7*10)
     parser.add_argument("--stat_loss", type=float, default=0)
     parser.add_argument("--abs_loss", type=float, default=0)
-    #parser.add_argument("--naming", type=str, default="default")
-    parser.add_argument("--save_dir", type=str, default="/home/fashionteam/ClothFlow/npz")
-    parser.add_argument("--exp", type=str, default="experiment")
+    parser.add_argument("--naming", type=str, default="default")
+    parser.add_argument("--save_dir", type=str, default="npz")
+    parser.add_argument("--exp", type=str, default=exp)
     
 
     opt = parser.parse_args()
     return opt
 
-def save_checkpoint(model, save_path):
-    if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
+def save_images(img_tensors, img_names, save_dir):
+    for img_tensor, img_name in zip(img_tensors, img_names):
+        tensor = (img_tensor.clone()+1)*0.5 * 255
+        tensor = tensor.cpu().clamp(0,255)
 
-    torch.save(model.cpu().state_dict(), save_path)
-    model.cuda()
+        # array = tensor.numpy().astype('uint8')
+        array = tensor.detach().numpy().astype('uint8')
+        if array.shape[0] == 1:
+            array = array.squeeze(0)
+        elif array.shape[0] == 3:
+            array = array.swapaxes(0, 1).swapaxes(1, 2)
+        image = Image.fromarray(array)
+        # image.show()
+        image.save(os.path.join(save_dir, img_name + '.jpg'))
 
-def load_checkpoint(model, checkpoint_path):
-    if not os.path.exists(checkpoint_path):
-       print("ERROR")
-       return 
-    model.load_state_dict(torch.load(checkpoint_path))	
-    model.cuda()
+def WriteImage(writer,name,data,cnt):
+    data_ = (data.clone() + 1)*0.5
+    #data_ = data_.cpu().clamp(0,255).detach().numpy().astype('uint8')
+    #data_ = data_.swapaxes(1,2).swapaxes(2,3)
+    #print(data_.shape)
+    writer.add_images(name,data_,cnt)
 
 def train(opt):
 
     model = UNet(opt)
     model = nn.DataParallel(model,output_device=0)
-    #load_checkpoint(model, "/home/fashionteam/ClothFlow/backup/0_00050.pth")
+    #load_checkpoint(model, "/home/fashionteam/ClothFlow/stage3/checkpoints/experiment/5_00350.pth")
     #load_checkpoint(model, "/home/fashionteam/ClothFlow/checkpoints/default/stage2/2_00240.pth")
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    train_dataset = CFDataset(opt)
+    train_dataset = CFDataset(opt, is_tops=IS_TOPS)
     train_loader = CFDataLoader(opt, train_dataset)
 
-    #theta_generator = ClothNormalizer()
-    #load_checkpoint(theta_generator,"/home/fashionteam/ClothFlow/Lab/saved/G_theta_affine.pth")
-    #theta_generator.cuda()
-    #theta_generator.eval()
-    
-    #Flow = FlowLoss(opt).cuda()
-
-    writer = SummaryWriter("/home/fashionteam/ClothFlow/stage3/debug/runs/"+opt.exp)
+    writer = SummaryWriter(comment = "_" + opt.naming)
     rLoss = renderLoss()
 
-    
-
-    for epoch in tqdm_notebook(range(EPOCHS), desc='EPOCH'):
-        for step in tqdm_notebook(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
+    for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
+        for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             
             inputs = train_loader.next_batch()
@@ -113,31 +137,42 @@ def train(opt):
             answer = inputs['image'].cuda()
             off_cloth = inputs['off_cloth'].cuda()
             pose = inputs['pose'].cuda()
-            parse = inputs['parse'].cuda()
+            #shape = inputs['shape'].cuda()
+            #B_,H_,W_ = shape.shape
+            #shape = shape.view(B_,1,H_,W_)
+            head = inputs['head'].cuda()
+            #arms = inputs['crop_arms'].cuda()
+            pants = inputs['crop_pants'].cuda()
+            name = inputs['name']
+            result = model(con_cloth,off_cloth,pose,warped,head,pants)
 
-            result = model(con_cloth,off_cloth,parse,pose,warped)
-
-
-            writer.add_images("GT", answer, cnt)
-            writer.add_images("warped", warped, cnt)
-            writer.add_images("con_cloth", con_cloth, cnt)#, dataformats="NCHW")
-            writer.add_images("off_cloth", off_cloth, cnt)
-
+            if cnt % 50 == 0:
+                WriteImage(writer,"GT", answer, cnt)
+                #WriteImage(writer,"shape", shape, cnt)
+                WriteImage(writer,"warped", warped, cnt)
+                WriteImage(writer,"con_cloth", con_cloth, cnt)#, dataformats="NCHW")
+                WriteImage(writer,"off_cloth", off_cloth, cnt)
+                WriteImage(writer,"Head", head, cnt)
+                WriteImage(writer,"Result", result, cnt)
+                
+            #save_images(result,name,"what")
             
-
-            writer.add_images("Result", result, cnt)
+            if epoch == 0:
+                optimizer.zero_grad()
+                loss, percept, style = rLoss(result,head)
+                loss.backward()
+                optimizer.step()
             
-            
-					
-            optimizer.zero_grad()
-            loss, percept, style = rLoss(result,answer)
-            loss.backward()
-            optimizer.step()
+            else:	
+                optimizer.zero_grad()
+                loss, percept, style = rLoss(result,answer)
+                loss.backward()
+                optimizer.step()
 
-            if (step+1) % opt.display_count == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
-                    100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
+            # if (step+1) % opt.display_count == 0:
+                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                #     epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
+                #     100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
             writer.add_scalar("loss/loss", loss, cnt)
             writer.add_scalar("loss/percept", percept, cnt)
             writer.add_scalar("loss/style", style, cnt)
@@ -148,7 +183,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0'
 
     opt = get_opt()
     train(opt)

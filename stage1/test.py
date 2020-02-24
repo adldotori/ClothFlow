@@ -7,59 +7,43 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
+import argparse
+from tqdm import tqdm
+from torchvision.utils import save_image
+import os.path as osp
+from tensorboardX import SummaryWriter
+import time
+sys.path.append('..')
+from utils import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
 from dataloader_MVC import *
-from utils import *
-import argparse
-from tqdm import tqdm
-from torchvision.utils import save_image
-import os.path as osp
-
-from tensorboardX import SummaryWriter
-import sys
-import time
 
 PYRAMID_HEIGHT = 5
-DATASET = 'viton'
-IS_TOPS = True
 
-if DATASET is 'MVC':
-    from dataloader_MVC import *
-    if IS_TOPS:
-        stage = 'tops'
-        in_channels = 22
-        init_checkpoint = 'stage1_top_512.pth'
-    else:
-        stage = 'bottoms'
-        in_channels = 2
-        init_checkpoint = 'stage1_bot_512.pth'
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    datalist = 'MVC'+stage+'_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage1/checkpoints/mvc/'+stage
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
-    exp = 'train/'+stage
-else:
-    from dataloader_viton import *
-    dataroot = '/home/fashionteam/viton_resize/'
-    datalist = ''
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage1/checkpoints/viton/'
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_mask_viton/'
-    exp = 'viton/'
+if IS_TOPS:
+    stage = 'tops'
     in_channels = 22
     init_checkpoint = 'stage1_top_512.pth'
+else:
+    stage = 'bottoms'
+    in_channels = 2
+    init_checkpoint = 'stage1_bot_512.pth'
+dataroot = '/home/fashionteam/dataset_MVC_'+stage
+datalist = 'MVC'+stage+'_pair.txt'
+checkpoint_dir = '/home/fashionteam/ClothFlow/stage1/checkpoints/mvc/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default = "TryOn")
-    parser.add_argument("--gpu_ids", default = "0")
-    parser.add_argument('-j', '--workers', type=int, default=1)
     parser.add_argument('-b', '--batch_size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
-    parser.add_argument("--datamode", default = "train")
+    parser.add_argument("--datamode", default = "test")
     parser.add_argument("--stage", default = "stage1")
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
@@ -104,16 +88,15 @@ def WriteImage(writer,name,data,cnt):
     writer.add_images(name,data_,cnt)
 
 def test(opt):
-
     model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
     model = nn.DataParallel(model)
-    load_checkpoint(model, "../backup/"+init_checkpoint)
+    load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.eval()
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
 
-    writer = SummaryWriter("/home/fashionteam/ClothFlow/stage1/runs/"+opt.exp)
+    writer = SummaryWriter(osp.join(PWD,'stage1/runs/',opt.exp))
     rLoss = renderLoss()
 
     if not osp.isdir(opt.result_dir):

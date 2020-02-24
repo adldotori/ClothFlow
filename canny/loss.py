@@ -1,7 +1,44 @@
-import torch.nn as nn
 import torch
-import numpy as np
+import torch.nn as nn
 from torchvision import models
+
+class WeightedMSE(nn.Module):
+	def __init__(self, b_mult = 1.0):
+		super(WeightedMSE, self).__init__()
+		self.b_mult = b_mult
+
+	def forward(self, y_true, y_pred):
+		epsilon = 1e-07
+
+		temp_y = y_true.clone()
+		_ones = torch.ones(temp_y.shape).cuda()
+		_zeros = torch.zeros(temp_y.shape).cuda()
+		temp_y = torch.where(temp_y > 0.5, _ones, temp_y)
+		temp_y = torch.where(temp_y <= 0.5, _zeros, temp_y)
+		_mean = torch.mean(temp_y, dim=(1, 2, 3))
+
+#		b = (torch.mean(y_true, dim=(1, 2, 3)) * self.b_mult).detach()
+
+		_epsilon = (torch.ones(y_pred.shape) * epsilon).cuda()
+		epsilon_ = (torch.ones(y_pred.shape) * (1-epsilon)).cuda()
+		torch.where(y_pred < epsilon, _epsilon, y_pred)
+		torch.where(y_pred > (1-epsilon), epsilon_, y_pred)
+
+		zeros = torch.zeros(y_true.shape).cuda()
+		ones = torch.ones(y_true.shape).cuda()
+		
+		# background covering
+		zero_idx = torch.where(y_true==0, ones, zeros)
+		zero_idx.type_as(torch.cuda.FloatTensor())
+		m_neg = torch.mean(((y_pred ** 2) * zero_idx), dim=(1, 2, 3))
+
+		# edges covering
+		non_zero_idx = torch.where(y_true!=0, ones, zeros)
+		non_zero_idx.type_as(torch.cuda.FloatTensor())
+		m_pos = torch.mean(((y_pred - y_true) ** 2) * non_zero_idx, dim=(1, 2, 3))
+
+		m = (1.0 - _mean) * m_pos + _mean * m_neg
+		return torch.mean(m, dim=-1)
 
 def gram_matrix(data):
     a, b, c, d = data.size()  # a=batch size(=1)
@@ -18,8 +55,6 @@ def gram_matrix(data):
 
     return G
 
-
-
 class StyleLoss(nn.Module):
 
     def __init__(self):
@@ -31,7 +66,6 @@ class StyleLoss(nn.Module):
         G2 = gram_matrix(target)
         loss = self.criterion(G1,G2)# G2 need detach 
         return loss
-
 
 class Vgg19(nn.Module):
     def __init__(self, requires_grad=False):
@@ -103,29 +137,32 @@ class Vgg19(nn.Module):
     
     def get_percept(self):
         return self.percept
+
     def get_style(self):
         return self.style
 
+class cannyLoss(nn.Module):
+	def __init__(self):
+		super(cannyLoss, self).__init__()
+		self.vgg = Vgg19()
+		self.vgg.cuda()
+		self.criterion = nn.L1Loss()
+		self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+		self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+		self.mse = WeightedMSE()
+	def forward(self, x, y):
+		self.vgg.zero_loss()
+		x3 = torch.cat([x, x, x], 1)
+		y3 = torch.cat([y, y, y], 1)
+		self.vgg(x3, y3)
+		style = self.vgg.get_style()
+		self.vgg.zero_loss()
+		mse = self.mse(x, y)
+		return style, mse
 
-
-class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and target is y.
-    def __init__(self, layids = None):
-        super(renderLoss, self).__init__()
-        self.vgg = Vgg19()
-        self.vgg.cuda()
-        self.criterion = nn.L1Loss()
-        self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
-        self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
-        self.layids = layids
-        self.styleLoss = StyleLoss()
-
-    def forward(self, x, y):
-        self.vgg.zero_loss()
-        self.vgg(x,y)
-        loss = self.vgg.get_loss()
-        percept = self.vgg.get_percept()
-        style = self.vgg.get_style()
-        self.vgg.zero_loss()  
-        return loss, percept, style
-
-
+if __name__=="__main__":
+	loss = WeightedMSE()
+	y_pred = torch.FloatTensor([[[[1, 0, 2, 2],[1, 1, 1, 1]],[[2, 2, 2, 2],[1, 4, 2, 2]]], [[[1, 1, 1, 1], [1, 1, 1, 1]], [[1, 1, 1, 1], [1, 1, 1, 1]]]]).cuda()
+	print(y_pred.shape)
+	loss.forward(y_pred, y_pred).backward()
+	print(y_pred.grad)

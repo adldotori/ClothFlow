@@ -201,7 +201,7 @@ class UNet(nn.Module):
                                       )
 
         for i in range(depth):
-            ins = (3+3+20+3+18) if i == 0 else outs
+            ins = (3+3+3+18+3+3) if i == 0 else outs
             outs = self.start_filts * (2 ** i)
             pooling = True if i < depth - 1 else False
 
@@ -243,9 +243,9 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, cloth, source_image,target_segment,target_pose,warped_cloth):
+    def forward(self, cloth, source_image,target_pose,warped_cloth,head,pants):
         encoder_outs = []
-        x = torch.cat((cloth,source_image,target_segment,target_pose,warped_cloth), 1)
+        x = torch.cat((cloth,source_image,target_pose,warped_cloth,head,pants), 1)
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)

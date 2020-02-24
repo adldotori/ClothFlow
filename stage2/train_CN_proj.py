@@ -24,7 +24,7 @@ from Models.ClothNormalize_proj import *
 EPOCHS = 30
 PYRAMID_HEIGHT = 5
 DATASET = 'MVC'
-IS_TOPS = True
+IS_TOPS = False
 
 if DATASET is 'MVC':
     from dataloader_MVC import *
@@ -34,9 +34,9 @@ if DATASET is 'MVC':
         stage = 'bottoms'
     dataroot = '/home/fashionteam/dataset_MVC_'+stage
     dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
-    datalist = 'MVC'+stage+'_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
-    exp = 'train/'+stage
+    datalist = 'train_MVC'+stage+'_pair.txt'
+    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/Cloth_Normalizer/'+stage
+    exp = 'CN/train/'+stage
 else:
     from dataloader_viton import *
     dataroot = '/home/fashionteam/viton_resize/'
@@ -95,7 +95,7 @@ def get_opt():
     parser.add_argument("--save_count", type=int, default = 100)
     parser.add_argument("--save_img_count", type=int, default = 10)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
-    parser.add_argument("--exp", default = "ClothNormalizer_proj_bot")
+    parser.add_argument("--exp", default = exp)
     
     parser.add_argument("--save_dir", type=str, default="npz")
     parser.add_argument("--naming", type=str, default="ClothNomalizer")

@@ -3,11 +3,11 @@ gpu_ids --- 0
 workers --- 1
 batch_size --- 8
 local_rank --- 0
-dataroot --- /home/fashionteam/dataset_MVC_tops
-dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/tops
+dataroot --- /home/fashionteam/dataset_MVC_bottoms
+dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/bottoms
 datamode --- train
 stage --- 1
-data_list --- MVCtops_pair.txt
+data_list --- train_MVCbottoms_pair.txt
 fine_width --- 512
 fine_height --- 512
 radius --- 3
@@ -21,6 +21,6 @@ display_count --- 20
 save_count --- 100
 save_img_count --- 10
 shuffle --- False
-exp --- ClothNormalizer_proj_bot
+exp --- train/bottoms
 save_dir --- npz
 naming --- ClothNomalizer

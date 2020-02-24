@@ -3,8 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
+from pypreprocessor import pypreprocessor
+pypreprocessor.parse()
+ 
 PWD = '/home/fashionteam/ClothFlow/'
+IS_TOPS = True
+#define TEST
 
 def save_checkpoint(model, save_path):
     if not os.path.exists(os.path.dirname(save_path)):
@@ -45,4 +49,16 @@ def projection_grid(param, shape):
     Y = (dis * torch.cos(theta)) / (-denominator * scale) * base_Y - beta / scale
     grid = torch.cat([X,Y], axis=3)
     return grid 
- 
+
+def WriteImage(writer,name,data,cnt,dataformats=None):
+    if not (cnt % 50 == 0):
+        return None
+    
+    data_ = (data.clone() + 1)*0.5
+    #data_ = data_.cpu().clamp(0,255).detach().numpy().astype('uint8')
+    #data_ = data_.swapaxes(1,2).swapaxes(2,3)
+    #print(data_.shape)
+    if dataformats is None:
+        writer.add_images(name,data_,cnt)
+    else:
+        writer.add_images(name,data_,cnt,dataformats=dataformats)
