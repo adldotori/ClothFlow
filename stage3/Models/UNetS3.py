@@ -125,7 +125,7 @@ class UpConv(nn.Module):
 class UNet(nn.Module):
 
     def __init__(self, opt, in_channels=19, depth=4,
-                 start_filts=64, up_mode='transpose',
+                 start_filts=32, up_mode='transpose',
                  merge_mode='concat'):
         """
         Arguments:
@@ -188,15 +188,15 @@ class UNet(nn.Module):
             self.cloth_warp.append(down_conv)
         """
 
-        self.bottle_0 = nn.Sequential(nn.Conv2d(512,512,3,1,1),
-                                    nn.InstanceNorm2d(512),
+        self.bottle_0 = nn.Sequential(nn.Conv2d(1024,1024,3,1,1),
+                                    nn.InstanceNorm2d(1024),
                                     nn.LeakyReLU(0.2, True))
-        self.bottle_1 = nn.Sequential(nn.Conv2d(512,512,3, dilation=2, padding=2, bias=False),
-                                    nn.InstanceNorm2d(512),
+        self.bottle_1 = nn.Sequential(nn.Conv2d(1024,1024,3, dilation=2, padding=2, bias=False),
+                                    nn.InstanceNorm2d(1024),
                                     nn.LeakyReLU(0.2, True)
                                     )
-        self.bottle_2 = nn.Sequential(nn.Conv2d(512, 512, 3, dilation=4, padding=4, bias=False),
-                                      nn.InstanceNorm2d(512),
+        self.bottle_2 = nn.Sequential(nn.Conv2d(1024, 1024, 3, dilation=4, padding=4, bias=False),
+                                      nn.InstanceNorm2d(1024),
                                       nn.LeakyReLU(0.2, True)
                                       )
 
@@ -219,7 +219,7 @@ class UNet(nn.Module):
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
         #self.cloth_warp = nn.ModuleList(self.cloth_warp)
-        self.final_layer1 = nn.Conv2d(64,3,7,1,3)
+        self.final_layer1 = nn.Conv2d(start_filts,3,7,1,3)
         #self.final_layer2 = nn.Conv2d(64,1,7,1,3)
         #self.sig = nn.Sigmoid()
         self.tanh = nn.Tanh()

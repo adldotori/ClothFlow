@@ -102,8 +102,8 @@ class CFDataset(data.Dataset):
         cloth_mask = c_mask.unsqueeze_(0)
 
         warped = Image.open(osp.join(self.root_cloth,pair+".jpg"))
-        warped_mask = Image.open(osp.join(self.root_mask,pair+".jpg"))
-        warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
+        # warped_mask = Image.open(osp.join(self.root_mask,pair+".jpg"))
+        # warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
 
         cloth = self.transform(cloth)
         c_image = self.transform(c_image)
@@ -212,7 +212,7 @@ class CFDataset(data.Dataset):
 
         head = torch.from_numpy(t_head)
         crop_cloth = torch.from_numpy(t_cloth)
-        warped_mask = torch.from_numpy(warped_mask)
+        # warped_mask = torch.from_numpy(warped_mask)
         arms = torch.from_numpy(t_arms)
         pants = torch.from_numpy(t_pants)
         #shape = torch.from_numpy(shape)
@@ -361,7 +361,7 @@ class CFDataset(data.Dataset):
                 'shape': t_shape,
                 'upper_mask': cloth,# cropped cloth mask
                 'crop_cloth': crop_cloth,#cropped cloth
-                'crop_cloth_mask' : cloth,#cropped cloth mask
+                'tar_mask' : cloth,#cropped cloth mask
                 'name' : pair,
                 'warped' : warped,
                 'off_cloth': off_cloth,#source image - cloth
@@ -374,7 +374,7 @@ class CFDataset(data.Dataset):
         else:
             result = {
                 'cloth': cloth,
-                'cloth_mask': pants,
+                'cloth_mask': cloth_mask,
                 'image': t_image,  # source image\
                 'crop_cloth_mask': t_pants,
                 'warped' : warped,
@@ -384,6 +384,7 @@ class CFDataset(data.Dataset):
                 'name': pair,
                 'target_body_shape': t_body_parse,
                 't_name': t_name,
+                'tar_mask': pants,
                 }
         
         return result

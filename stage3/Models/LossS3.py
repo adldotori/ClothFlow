@@ -89,7 +89,6 @@ class Vgg19(nn.Module):
         self.percept += self.lamdas[4]*self.criterion(h_relu5_X,h_relu5_Y.detach())
         self.style += self.gammas[4]*self.styleLoss(h_relu5_X,h_relu5_Y.detach())
 
-        self.percept = self.percept / 1000
         self.loss = self.percept + self.style
         
         return 0
@@ -113,8 +112,10 @@ class Vgg19(nn.Module):
 class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and target is y.
     def __init__(self, layids = None):
         super(renderLoss, self).__init__()
-        self.vgg = Vgg19()
-        self.vgg.cuda()
+        self.vgg1 = Vgg19()
+        self.vgg1.cuda()
+        self.vgg2 = Vgg19()
+        self.vgg2.cuda()
         self.criterion = nn.L1Loss()
         self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
@@ -122,17 +123,20 @@ class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and t
         self.styleLoss = StyleLoss()
 
     def forward(self, x, y, mask=None):
-        self.vgg.zero_loss()
+        self.vgg1.zero_loss()
+        self.vgg2.zero_loss()
         try:
             len(mask)
             mask = mask.repeat(1, 3, 1, 1)
-            self.vgg(mask*x,mask*y)
+            self.vgg1(mask*x,mask*y)
+            self.vgg2(x,y)
         except:
-            self.vgg(x,y)
-        loss = self.vgg.get_loss()
-        percept = self.vgg.get_percept()
-        style = self.vgg.get_style()
-        self.vgg.zero_loss()  
-        return loss, percept, style
+            self.vgg1(x,y)
+            self.vgg2(x,y)
+        percept = self.vgg1.get_percept()
+        style = self.vgg2.get_style()
+        self.vgg1.zero_loss() 
+        self.vgg2.zero_loss() 
+        return percept+style, percept, style
 
 

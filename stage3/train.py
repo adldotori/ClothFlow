@@ -24,6 +24,7 @@ from dataloader_MVC import *
 
 EPOCHS = 20
 PYRAMID_HEIGHT = 6
+IS_TOPS = False
 
 if IS_TOPS:
     stage = 'tops'
@@ -103,6 +104,7 @@ def train(opt):
             off_cloth = inputs['off_cloth'].cuda()
             pants = inputs['crop_pants'].cuda()
             cloth_mask = inputs['cloth_mask'].cuda()
+            tar_mask = inputs['tar_mask'].cuda()
             if IS_TOPS:
                 head = inputs['head'].cuda()
                 pose = inputs['pose'].cuda()
@@ -132,7 +134,7 @@ def train(opt):
                 optimizer.step()
             else:	
                 optimizer.zero_grad()
-                loss, percept, style = rLoss(result,answer,cloth_mask)
+                loss, percept, style = rLoss(result,answer,1-tar_mask)
                 loss.backward()
                 optimizer.step()
 
@@ -151,7 +153,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, '%d_%05d.pth' % (epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
 
     opt = get_opt()
     train(opt)

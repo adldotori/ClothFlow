@@ -23,6 +23,7 @@ from Models.ClothNormalize_proj import *
 from dataloader_MVC import *
 
 PYRAMID_HEIGHT = 6
+IS_TOPS = False
 
 if IS_TOPS:
     stage = 'tops'
@@ -33,7 +34,7 @@ else:
     stage = 'bottoms'
     nc = 2
     checkpoint = 'backup/stage2_bot_512.pth'
-    init_CN = 'backup/CN_bot.pth'
+    init_CN = 'backup/CN_bot_.pth'
 
 dataroot = '/home/fashionteam/dataset_MVC_'+stage
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
@@ -79,7 +80,6 @@ def get_opt():
 def test(opt):
     model = FlowNet(PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
-
     load_checkpoint(model, opt.checkpoint)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
@@ -130,7 +130,7 @@ def test(opt):
                 
         loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
 
-        if cnt % opt.display_count == 0:
+        if not TENSORBOARD and cnt % opt.display_count == 0:
             print('Test: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                  cnt, len(test_loader.dataset),
                 100. * cnt / len(test_loader.dataset), loss))

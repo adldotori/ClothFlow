@@ -116,11 +116,11 @@ class CFDataset(data.Dataset):
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
 
-        output = Image.open(osp.join(self.root_mask,pair+".jpg"))
-        output = np.array(output)
-        output = (output > 0).astype(np.float32)
-        output = torch.from_numpy(output)
-        output = output.unsqueeze_(0)
+        # output = Image.open(osp.join(self.root_mask,pair+".jpg"))
+        # output = np.array(output)
+        # output = (output > 0).astype(np.float32)
+        # output = torch.from_numpy(output)
+        # output = output.unsqueeze_(0)
 
         cloth = self.transform(cloth)
         c_image = self.transform(c_image)
