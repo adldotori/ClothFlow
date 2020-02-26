@@ -1,7 +1,7 @@
 name --- TryOn
 gpu_ids --- 1
 workers --- 1
-batch_size --- 3
+batch_size --- 4
 local_rank --- 0
 dataroot --- /home/fashionteam/dataset_MVC_bottoms
 dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/bottoms
@@ -14,9 +14,9 @@ radius --- 5
 grid_size --- 10
 lr --- 3e-05
 tensorboard_dir --- tensorboard
-checkpoint_dir --- checkpoints
+checkpoint_dir --- /home/fashionteam/ClothFlow/stage2/checkpoints/bottoms
 result_dir --- result
-checkpoint --- 
+checkpoint --- backup/init_bot_6.pth
 display_count --- 1
 save_count --- 100
 save_img_count --- 50

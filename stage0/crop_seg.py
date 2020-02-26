@@ -51,10 +51,10 @@ def filter(np2darray):
     np2darray_ = np.reshape(np2darray,(a,b,1))
     return np.concatenate((np2darray_,np2darray_,np2darray_),axis=2)
 
-Color = [[85,85,0]]
-# Color = [[255,85,0],[0,119,221],[0,0,85]]
-# orange, lightblue,navy
 
+# Color = [[255,85,0],[0,119,221],[0,0,85]] # top
+# orange, lightblue,navy
+Color = [[85,85,0]] # bottom
 
 lidi = os.listdir(dataroot)
 make_mask = True

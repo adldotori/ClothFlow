@@ -220,8 +220,7 @@ class CFDataset(data.Dataset):
                   (t_parse_array == 7).astype(np.float32)
 
         t_pants_mask = (t_parse_array == 9).astype(np.float32) + \
-                  (t_parse_array == 12).astype(np.float32) + \
-                  (t_parse_array == 16).astype(np.float32)
+                  (t_parse_array == 12).astype(np.float32)
 
         # to obtain the one hot of t_shape, the value of each pixel is 1 or 0
         t_body_parse = t_shape_mask

@@ -12,6 +12,7 @@ import json
 import pickle
 import time
 import torch.nn.functional as F
+import neckmake
 
 INPUT_SIZE = (512, 512)
 
@@ -28,9 +29,6 @@ class timer:
         current = time.time()
         print("(TIMER %s) Total: %fs, lap: %fs - message: %s" %(flag,current-self.records[flag],current-self.lap_records[flag],message))
         self.lap_records[flag] = current
-
-
-
 
 def naming(pair,position):
     return pair + "-" + position + "-4x_resize.jpg"
@@ -293,7 +291,8 @@ class CFDataset(data.Dataset):
             t_pose_data = pose_label
         ###
 
-
+            shape = neckmake.fullmake(shape, pose_data)
+            shape = torch.from_numpy(shape)
 
             point_num = 18
             t_pose_map = torch.zeros(point_num, H, W)
@@ -340,6 +339,7 @@ class CFDataset(data.Dataset):
                 'pose': t_pose_map,
                 'name': pair,
                 'target_body_shape': t_body_parse,
+					 'shape': shape
                 }
         else:
             result = {

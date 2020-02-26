@@ -1,13 +1,13 @@
 name --- TryOn
 gpu_ids --- 0
 workers --- 1
-batch_size --- 8
+batch_size --- 60
 local_rank --- 0
-dataroot --- /home/fashionteam/dataset_MVC_bottoms
-dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/bottoms
+dataroot --- /home/fashionteam/dataset_MVC_tops
+dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/tops
 datamode --- train
 stage --- 1
-data_list --- train_MVCbottoms_pair.txt
+data_list --- train_MVCtops_pair.txt
 fine_width --- 512
 fine_height --- 512
 radius --- 3
@@ -21,6 +21,6 @@ display_count --- 20
 save_count --- 100
 save_img_count --- 10
 shuffle --- False
-exp --- train/bottoms
+exp --- CN/train/tops
 save_dir --- npz
 naming --- ClothNomalizer

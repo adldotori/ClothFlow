@@ -8,8 +8,8 @@ import shutil
 import cv2
 
 TARGET_SIZE = (512,512)
-IS_TOPS = True
-dataroot = "/home/fashionteam/dataset_MVC_tops/train/"
+IS_TOPS = False
+dataroot = "/home/fashionteam/dataset_MVC_bottoms/train/"
 print(IS_TOPS)
 def naming(pair,position):
     return pair + "-" + position + "-4x.jpg"
@@ -68,7 +68,7 @@ if IS_TOPS:
     Color = [[255,85,0],[0,119,221],[0,0,85]]
     # orange, lightblue,navy
 else:
-    Color = [[0,85,85]]
+    Color = [[0,85,85], [0,128,0]]
 
 
 lidi = os.listdir(dataroot)
@@ -94,7 +94,7 @@ for i in range(len(lidi)):
         if not len(temp[j][temp[j]==True]) == 0:
             check = False
     if check:
-        f = open('delete.txt','a')
+        f = open('delete_bot.txt','a')
         print(i, lidi[i])
         f.write(lidi[i]+'\n')
         f.close()

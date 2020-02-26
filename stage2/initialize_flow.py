@@ -7,42 +7,36 @@ import torchvision
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from Models.networks import *
-from dataloader_MVC import *
 import argparse
 from tqdm import tqdm
 from torchvision.utils import save_image
-
 from tensorboardX import SummaryWriter
+import sys
+sys.path.append('..')
+from utils import *
+from Models.networks import *
+from dataloader_MVC import *
 
-EPOCHS = 10
+EPOCHS = 2
 PYRAMID_HEIGHT = 6
-DATASET = 'MVC'
-IS_TOPS = True
 
-if DATASET is 'MVC':
-    from dataloader_MVC import *
+if IS_TOPS:
     stage = 'tops'
-    nc = 2
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
-    datalist = 'train_MVC'+stage+'_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/init/'+stage
-    exp = 'train/'+stage
 else:
-    from dataloader_viton import *
-    dataroot = '/home/fashionteam/viton_resize/'
-    datalist = ''
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
-    result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth/viton/'
-    exp = 'train/tops/'
+    stage = 'bottoms'
+nc = 2
+dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+datalist = 'train_MVC'+stage+'_pair.txt'
+checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/init/'+stage
+exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=4)
+    parser.add_argument('-b', '--batch-size', type=int, default=2)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -75,36 +69,18 @@ def get_opt():
     opt = parser.parse_args()
     return opt
 
-def save_checkpoint(model, save_path):
-    if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
-
-    torch.save(model.cpu().state_dict(), save_path)
-    model.cuda()
-
-def load_checkpoint(model, checkpoint_path):
-    if not os.path.exists(checkpoint_path):
-        print("error")
-        exit()
-    model.load_state_dict(torch.load(checkpoint_path), False)
-    model.cuda()
-
 def train(opt):
-
-    ####
     A = np.array([[[1,0,0],[0,1,0]]]).astype(np.float32)
     A = np.concatenate([A]*opt.batch_size,0)
     A = torch.from_numpy(A)
     net = nn.functional.affine_grid(A,(opt.batch_size,2,INPUT_SIZE[1],INPUT_SIZE[0])).cuda()
-    ####
 
-    model = FlowNet(PYRAMID_HEIGHT,4,2)
+    model = FlowNet(PYRAMID_HEIGHT,4,1)
     model = nn.DataParallel(model)
-    # load_checkpoint(model,"backup/initial__4_02426.pth")##
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-    train_dataset = CFDataset(opt)
+    train_dataset = CFDataset(opt, IS_TOPS)
     train_loader = CFDataLoader(opt, train_dataset)
 
     Flow = nn.L1Loss()
@@ -112,23 +88,23 @@ def train(opt):
     writer = SummaryWriter("MSruns/initial")
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
-        for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
-            cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
+        for step in tqdm(range(len(train_loader.dataset)//opt.batch_size), desc='step'):
+            cnt = epoch * (len(train_loader.dataset)//opt.batch_size) + step + 1
             inputs = train_loader.next_batch()
 
             con_cloth = inputs['cloth'].cuda()
             con_cloth_mask = inputs['cloth_mask'].cuda()
             tar_cloth = inputs['crop_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-            pose = inputs['pose_png'].cuda()
+            # pose = inputs['pose_png'].cuda()
 
             writer.add_image("con_cloth", con_cloth, cnt, dataformats="NCHW")
             writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
             writer.add_image("tar_cloth", tar_cloth, cnt, dataformats="NCHW")
             writer.add_image("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
-            writer.add_image("pose", pose, cnt, dataformats="NCHW")
+            # writer.add_image("pose", pose, cnt, dataformats="NCHW")
 
-            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), torch.cat([tar_cloth_mask, pose], 1))
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
 
             writer.add_image("warp_cloth", warp_cloth, cnt, dataformats="NCHW")
             writer.add_image("warp_mask", warp_mask, cnt, dataformats="NCHW")

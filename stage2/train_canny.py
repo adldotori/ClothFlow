@@ -25,21 +25,20 @@ from dataloader_MVC import *
 from canny import network as CNet
 from canny import loss as CLoss
 
-EPOCHS = 15
+EPOCHS = 20
 PYRAMID_HEIGHT = 6
 NUM_STAGE = '2'
-IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
     nc = 2
-    checkpoint = 'backup/init_top_6.pth'
+    checkpoint = 'backup/init_top_5.pth'
     init_CN = 'backup/CN_top.pth'
 else:
     stage = 'bottoms'
     nc = 2
     checkpoint = 'backup/init_bot_6.pth'
-    init_CN = 'backup/CN_bot_.pth'
+    init_CN = 'backup/CN_bot.pth'
 dataroot = '/home/fashionteam/dataset_MVC_'+stage
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
@@ -116,6 +115,12 @@ def train(opt):
        f.write("{} --- {}\n".format(key, val))
     f.close()
 
+    total_c = 0
+    check_c = 0
+
+    EdgeMaker = CNet.Canny()
+    EdgeLoss = CLoss.cannyLoss()
+
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
@@ -151,8 +156,18 @@ def train(opt):
                 writer.add_images("warp_cloth", warp_cloth, cnt)
                 writer.add_images("warp_mask", warp_mask, cnt, dataformats="NCHW")
 
-            loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
             
+            if cnt > 500:
+                edge_warped = EdgeMaker(warp_cloth)
+                edge_tar = EdgeMaker(tar_cloth)
+                WriteImage(writer,"edge_warped", edge_warped, cnt,dataformats="NCHW")
+                WriteImage(writer,"edge_tar", edge_tar, cnt, dataformats="NCHW")
+    
+                edge_loss = EdgeLoss(edge_warped,edge_tar)
+
+            loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
+            if cnt > 500:
+                loss = loss + 0.01 * edge_loss[0]
             loss.backward()  
             if cnt % opt.loss_count == 0:
                 optimizer.step()
@@ -177,6 +192,8 @@ def train(opt):
                 writer.add_scalar("loss/struct", struct, cnt)
                 writer.add_scalar("loss/smt", smt, cnt)
                 writer.add_scalar("loss/total", loss, cnt)
+                if cnt > 500:
+                    writer.add_scalar("loss/canny_style", 0.01*edge_loss[0], cnt)
                 writer.close()
 
             if (step+1) % opt.save_count == 0:

@@ -60,17 +60,6 @@ class CFDataset(data.Dataset):
         c_names = []
         t_names = []
 
-        with open('../'+self.data_list, 'r') as f:
-            for line in f.readlines():
-                pair, c_name, t_name = line.strip().split()
-                pairs.append(pair)
-                c_names.append(c_name)
-                t_names.append(t_name)
-
-        self.pairs = pairs
-        self.c_names = c_names
-        self.t_names = t_names
-
     def name(self):
         return "CFDataset"
 

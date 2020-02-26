@@ -18,11 +18,11 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3 import *
+from Models.networks_neck import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_MVC import *
+from dataloader_neck import *
 
 
 EPOCHS = 15
@@ -37,8 +37,8 @@ else:
     in_channels = 2
 dataroot = '/home/fashionteam/dataset_MVC_'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
-checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
-runs = osp.join(PWD,'stage'+NUM_STAGE,'runs')
+checkpoint_dir = osp.join(PWD,'stage'+str(NUM_STAGE),"neck", 'checkpoints',stage)
+runs = osp.join(PWD,'stage'+str(NUM_STAGE),"neck", 'runs')
 exp = osp.join('train',stage)
 
 def get_opt():
@@ -47,7 +47,7 @@ def get_opt():
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
     parser.add_argument('-b', '--batch_size', type=int, default=4)
-    
+    parser.add_argument("--stage", default=1) 
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "test")
     parser.add_argument("--data_list", default = datalist)
@@ -55,14 +55,14 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument("--result_dir", "result")
     parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 500)
     parser.add_argument("--save_count_npz", type=int, default = 50)
-    parser.add_argument("--exp", type=str, default = exp)
-    
+    parser.add_argument("--exp", type=str, default = exp)  
 
     opt = parser.parse_args()
     return opt
@@ -89,6 +89,8 @@ def train(opt):
     cLoss = WeightedMSE()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
+        if (epoch <= 5): style = 0.0  
+        else: style = style = 1/300
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             
@@ -100,12 +102,15 @@ def train(opt):
             if IS_TOPS:
                 tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
                 pose = inputs['pose'].cuda()
+                shape = inputs['shape'].cuda()
+                B_, H_, W_ = shape.shape
+                shape = shape.view(B_, 1, H_, W_)
             else:
                 tar_cloth_mask = inputs['crop_pants_mask'].cuda()
                 tar_body_mask = inputs['target_body_shape'].cuda()
             
             if IS_TOPS:
-                result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
+                result = model(con_cloth, con_cloth_mask, pose, IS_TOPS, shape)
             else:
                 result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
             
@@ -116,7 +121,8 @@ def train(opt):
 				
             writer.add_images("result_canny", img1, cnt)
             writer.add_images("GT_canny", img2, cnt)
-
+            if IS_TOPS:
+                writer.add_image("shape", shape, cnt)
             # style, mse = cLoss(img1, img2)
             # if epoch <= 4:
             #     style = style * 0.0
@@ -132,7 +138,7 @@ def train(opt):
             loss = r_loss
             if epoch >= 4:
                 c_loss = cLoss.forward(img1, img2)
-                loss += c_loss
+                loss += c_loss*style
             
             loss.backward()
             optimizer.step()
@@ -159,6 +165,7 @@ def train(opt):
 
             if (step+1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, '%d_%05d.pth' % (epoch, step+1)))
+            
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"

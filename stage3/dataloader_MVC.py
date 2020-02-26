@@ -186,9 +186,9 @@ class CFDataset(data.Dataset):
         # t_parse_fla = t_parse_array.reshape(H*W, 1)
         t_parse_fla = t_parse_array.reshape(H*W, 1)
         t_parse_fla = torch.from_numpy(t_parse_fla).long()
-        #t_parse = torch.zeros(H*W, 30).scatter_(1, t_parse_fla, 1)
-        #t_parse = t_parse.view(H, W, 30)
-        #t_parse = t_parse.transpose(2, 0).transpose(1, 2).contiguous()
+        t_parse = torch.zeros(H*W, 30).scatter_(1, t_parse_fla, 1)
+        t_parse = t_parse.view(H, W, 30)
+        t_parse = t_parse.transpose(2, 0).transpose(1, 2).contiguous()
         
         t_shape = (t_parse_array > 0).astype(np.float32)  # condition body shape
         t_head = (t_parse_array == 1).astype(np.float32) + \
@@ -203,8 +203,7 @@ class CFDataset(data.Dataset):
                   (t_parse_array == 14).astype(np.float32)
         
         t_pants = (t_parse_array == 9).astype(np.float32) + \
-                  (t_parse_array == 12).astype(np.float32) + \
-                  (t_parse_array == 16).astype(np.float32)
+                    (t_parse_array == 12).astype(np.float32)
 
         # to obtain the one hot of t_shape, the value of each pixel is 1 or 0
         t_body_parse = t_shape
@@ -223,13 +222,17 @@ class CFDataset(data.Dataset):
         
         crop_head = t_image * head + (1 - head)
         crop_cloth = t_image * crop_cloth + (1 - crop_cloth)
-        off_cloth = t_image * (1-warped_mask) + warped_mask
+        if self.is_tops:
+            off_cloth = t_image * (1-warped_mask) + warped_mask
+        else:
+            off_cloth = t_image * (1-pants) + pants
         crop_arms = t_image * arms + (1-arms)
         crop_pants = t_image * pants + (1-pants)
         #print(t_body_parse.shape)
         
         t_body_parse = t_body_parse.view((1,self.fine_height,self.fine_width))
-
+        
+        pants = pants.view(1, H, W)
         """
         t_shape_array = np.asarray(t_body_parse)
         t_body_fla = t_shape_array.reshape(H*W, 1)
@@ -356,21 +359,13 @@ class CFDataset(data.Dataset):
                 'head': crop_head,# cropped head from source image
                 'pose': t_pose_map,#pose map
                 'shape': t_shape,
-                # 'shape_sample': shape_sample,
-                #'grid_image': im_g,
-                # if self.opt.stage == "GMM":
-                #     'target_softmax_shape': target_softmax_shape,
-                # 'one_hot': one_hot,# one_hot - body shape
                 'upper_mask': cloth,# cropped cloth mask
-                # 'head_mask': head,#head mask
                 'crop_cloth': crop_cloth,#cropped cloth
                 'crop_cloth_mask' : cloth,#cropped cloth mask
                 'name' : pair,
                 'warped' : warped,
                 'off_cloth': off_cloth,#source image - cloth
-                # 'parse' : t_parse,
-                # 'cloth_sample': cloth_sample,#coarse cloth mask
-                # 'arms_mask': arms,
+                'parse' : t_parse,
                 'pants_mask': pants,
                 'crop_pants': crop_pants,
                 'crop_arms': crop_arms,
@@ -379,9 +374,13 @@ class CFDataset(data.Dataset):
         else:
             result = {
                 'cloth': cloth,
-                'cloth_mask': cloth_mask,
-                'crop_cloth': tar_pants,
+                'cloth_mask': pants,
+                'image': t_image,  # source image\
                 'crop_cloth_mask': t_pants,
+                'warped' : warped,
+                'off_cloth': off_cloth,#source image - cloth
+                'parse' : t_parse,
+                'crop_pants': crop_pants,
                 'name': pair,
                 'target_body_shape': t_body_parse,
                 't_name': t_name,

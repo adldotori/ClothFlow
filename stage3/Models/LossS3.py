@@ -89,6 +89,7 @@ class Vgg19(nn.Module):
         self.percept += self.lamdas[4]*self.criterion(h_relu5_X,h_relu5_Y.detach())
         self.style += self.gammas[4]*self.styleLoss(h_relu5_X,h_relu5_Y.detach())
 
+        self.percept = self.percept / 1000
         self.loss = self.percept + self.style
         
         return 0
@@ -103,6 +104,7 @@ class Vgg19(nn.Module):
     
     def get_percept(self):
         return self.percept
+        
     def get_style(self):
         return self.style
 
@@ -119,9 +121,14 @@ class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and t
         self.layids = layids
         self.styleLoss = StyleLoss()
 
-    def forward(self, x, y):
+    def forward(self, x, y, mask=None):
         self.vgg.zero_loss()
-        self.vgg(x,y)
+        try:
+            len(mask)
+            mask = mask.repeat(1, 3, 1, 1)
+            self.vgg(mask*x,mask*y)
+        except:
+            self.vgg(x,y)
         loss = self.vgg.get_loss()
         percept = self.vgg.get_percept()
         style = self.vgg.get_style()

@@ -3,12 +3,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from pypreprocessor import pypreprocessor
-pypreprocessor.parse()
+from PIL import Image
+import pickle
  
 PWD = '/home/fashionteam/ClothFlow/'
 IS_TOPS = True
-#define TEST
+REAL_TEST = False
+TENSORBOARD = True
 
 def save_checkpoint(model, save_path):
     if not os.path.exists(os.path.dirname(save_path)):
@@ -23,6 +24,7 @@ def load_checkpoint(model, checkpoint_path):
         print('[-] Checkpoint Load Error!')  
         exit() 
     model.load_state_dict(torch.load(real_path))	
+    #model.to('cuda:1')
     model.cuda()
 
 def get_A(bs, H, W):
@@ -50,6 +52,21 @@ def projection_grid(param, shape):
     grid = torch.cat([X,Y], axis=3)
     return grid 
 
+def save_images(img_tensors, img_names, save_dir):
+    for img_tensor, img_name in zip(img_tensors, img_names):
+        tensor = (img_tensor.clone()+1)*0.5 * 255
+        tensor = tensor.cpu().clamp(0,255)
+
+        # array = tensor.numpy().astype('uint8')
+        array = tensor.detach().numpy().astype('uint8')
+        if array.shape[0] == 1:
+            array = array.squeeze(0)
+        elif array.shape[0] == 3:
+            array = array.swapaxes(0, 1).swapaxes(1, 2)
+        image = Image.fromarray(array)
+        # image.show()
+        image.save(os.path.join(save_dir, img_name + '.jpg'))
+
 def WriteImage(writer,name,data,cnt,dataformats=None):
     if not (cnt % 50 == 0):
         return None
@@ -62,3 +79,30 @@ def WriteImage(writer,name,data,cnt,dataformats=None):
         writer.add_images(name,data_,cnt)
     else:
         writer.add_images(name,data_,cnt,dataformats=dataformats)
+
+def pickle_load(name="opt.pkl"):
+    with open(name,"rb") as f:
+        d = pickle.load(f)
+    return d
+
+def batch(tensor):
+    if len(tensor.shape) == 2:
+        a ,b = tensor.shape
+        return tensor.view(1,a,b)
+    if len(tensor.shape) == 3:
+        a,b,c = tensor.shape
+        return tensor.view(1,a,b,c)
+    return tensor
+
+def batch_cuda(tensor):
+    if len(tensor.shape) == 2:
+        a ,b = tensor.shape
+        return tensor.view(1,a,b).cuda()
+    if len(tensor.shape) == 3:
+        a,b,c = tensor.shape
+        return tensor.view(1,a,b,c).cuda()
+    return tensor.cuda()
+
+def set_requires_grad(model,boolean):
+    for param in model.parameters():
+        param.requires_grad = boolean

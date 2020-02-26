@@ -18,31 +18,25 @@ from torchvision.utils import save_image
 from torch.nn import DataParallel as DP
 
 from tensorboardX import SummaryWriter
-
+import sys
+sys.path.append('..')
+from utils import *
 from Models.ClothNormalize_proj import *
+from dataloader_MVC import *
 
-EPOCHS = 30
+EPOCHS = 15
 PYRAMID_HEIGHT = 5
-DATASET = 'MVC'
-IS_TOPS = False
+IS_TOPS = True
 
-if DATASET is 'MVC':
-    from dataloader_MVC import *
-    if IS_TOPS:
-        stage = 'tops'
-    else:
-        stage = 'bottoms'
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
-    datalist = 'train_MVC'+stage+'_pair.txt'
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/Cloth_Normalizer/'+stage
-    exp = 'CN/train/'+stage
+if IS_TOPS:
+    stage = 'tops'
 else:
-    from dataloader_viton import *
-    dataroot = '/home/fashionteam/viton_resize/'
-    datalist = ''
-    checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/tops/'
-    exp = 'train/tops/'
+    stage = 'bottoms'
+dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+datalist = 'train_MVC'+stage+'_pair.txt'
+checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/Cloth_Normalizer/'+stage
+exp = 'CN/train/'+stage
 
 def get_A(bs, H, W):
     A = np.array([[[1,0,0],[0,1,0]]]).astype(np.float32)
@@ -74,7 +68,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=8)
+    parser.add_argument('-b', '--batch-size', type=int, default=60)
     parser.add_argument('--local_rank', type=int, default=0)
     
     parser.add_argument("--dataroot", default = dataroot)
@@ -115,12 +109,9 @@ def save_checkpoint(model, save_path):
 
 
 def train(opt,train_loader,model):
-
-
     model.cuda()
     model.train()
     
-
     L1 = nn.L1Loss()
     L2 = nn.MSELoss()
 
@@ -191,12 +182,16 @@ def train(opt,train_loader,model):
             ####
 
             rotate = np.array(t_name)
-            rotate = np.where(rotate=='3', 0.8, -0.8)
+            print(rotate)
+            rotate = np.where(rotate=='3', 0.8, rotate)
+            rotate = np.where(rotate=='1', -0.8, rotate)
+            rotate = np.where(rotate=='p', 0, rotate)
+            rotate = rotate.astype(float)
             rotate = torch.unsqueeze(torch.from_numpy(rotate),1).cuda()
             print(rotate)
             loss = 0
 
-            if cnt < 100:
+            if cnt < 150:
                 grid_loss = (grid-AAA)**2
                 grid_loss = torch.mean(torch.sqrt(torch.sum(grid_loss,axis=3)))
                 writer.add_scalar("loss/grid_loss", grid_loss,cnt)
@@ -242,14 +237,9 @@ def train(opt,train_loader,model):
                 model.cuda()
 
 if __name__ == '__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"]= "1"
     opt = get_opt()
-
-    # create dataset 
     train_dataset = CFDataset(opt)
-
-    # create dataloader
     train_loader = CFDataLoader(opt, train_dataset)
-    
     model = ClothNormalizer(depth=PYRAMID_HEIGHT, nc=2)
-    #model = DP(model)
     train(opt,train_loader,model)

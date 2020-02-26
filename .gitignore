@@ -7,3 +7,4 @@ npz/
 .ipynb_checkpoints/
 result/
 test/
+trained/
