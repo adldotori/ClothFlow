@@ -22,13 +22,13 @@ from Models.networks import *
 from Models.ClothNormalize_proj import *
 from dataloader_MVC import *
 
-PYRAMID_HEIGHT = 5
+PYRAMID_HEIGHT = 6
 
 if IS_TOPS:
     stage = 'tops'
     nc = 2
-    checkpoint = 'backup/stage2_top_512.pth'
-    init_CN = 'backup/CN_top.pth'
+    checkpoint = 'backup/stage2_top_512_.pth'
+    init_CN = 'backup/CN_top_.pth'
 else:
     stage = 'bottoms'
     nc = 2
@@ -39,13 +39,13 @@ dataroot = '/home/fashionteam/dataset_MVC_'+stage
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
-result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth_CN/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth/'+stage
 exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=2)
+    parser.add_argument('-b', '--batch-size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -58,9 +58,8 @@ def get_opt():
     parser.add_argument("--grid_size", type=int, default = 5)
     parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
-    parser.add_argument('--checkpoint', type=str, default=checkpoint_dir, help='model checkpoint for initialization')
+    parser.add_argument('--checkpoint', type=str, default=checkpoint, help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 1)
     parser.add_argument("--save_count", type=int, default = 1)
     parser.add_argument("--save_img_count", type=int, default = 1)
@@ -81,7 +80,7 @@ def test(opt):
     model = FlowNet(PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
 
-    # load_checkpoint(model, opt.checkpoint)
+    load_checkpoint(model, opt.checkpoint)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
@@ -94,7 +93,7 @@ def test(opt):
     if not osp.isdir(opt.result_dir):
         os.makedirs(opt.result_dir)
 
-    theta_generator = ClothNormalizer(depth=PYRAMID_HEIGHT, nc=nc)
+    theta_generator = ClothNormalizer(depth=5, nc=nc)
     load_checkpoint(theta_generator,init_CN)
     theta_generator.cuda()
     theta_generator.eval()
@@ -134,9 +133,9 @@ def test(opt):
         if cnt % opt.display_count == 0:
             print('Test: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                  cnt, len(test_loader.dataset),
-                100. * cnt / len(test_loader.dataset), 0))
+                100. * cnt / len(test_loader.dataset), loss))
 
-        save_images(con_cloth, name, opt.result_dir)
+        save_images(warp_cloth, name, opt.result_dir)
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'

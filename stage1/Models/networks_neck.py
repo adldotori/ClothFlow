@@ -244,10 +244,11 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, cloth, cloth_mask, target_pose, is_tops):
+    def forward(self, cloth, cloth_mask, target_pose, is_tops, shape):
         encoder_outs = []
         if is_tops:
-            x = torch.cat((cloth, cloth_mask, target_pose), 1)
+            shape = shape.view(shape.shape[0], 1, shape.shape[1], shape.shape[2])
+            x = torch.cat((cloth, cloth_mask, target_pose, shape), 1)
         else:
             x = torch.cat((cloth, cloth_mask), 1)
         # encoder pathway, save outputs for merging

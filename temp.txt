@@ -1,1 +1,1 @@
-/home/fashionteam/final_dataset_white/1/image.jpg
+/home/fashionteam/mvc_test/3196697/image.jpg

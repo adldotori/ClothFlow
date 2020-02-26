@@ -289,10 +289,15 @@ class CFDataset(data.Dataset):
             with open(path_t_pose, 'rb') as f:
                 pose_label = pickle.load(f)
             t_pose_data = pose_label
-        ###
+        ### 
 
-            shape = neckmake.fullmake(shape, pose_data)
-            shape = torch.from_numpy(shape)
+            pose_key = [k for k in t_pose_data]
+            if (16 not in pose_key) or (17 not in pose_key) or (2 not in pose_key) or (5 not in pose_key) or (3 not in pose_key) or (6 not in pose_key):
+               shape = t_shape_mask
+               shape = torch.from_numpy(shape)
+            else:
+               shape = neckmake.fullmake(t_shape_mask, t_pose_data)
+               shape = torch.from_numpy(shape)
 
             point_num = 18
             t_pose_map = torch.zeros(point_num, H, W)
@@ -363,10 +368,8 @@ class CFDataLoader(object):
     def __init__(self, opt, dataset):
         super(CFDataLoader, self).__init__()
 
-        if opt.shuffle :
-            train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
-        else:
-            train_sampler = None
+         
+        train_sampler = None
 
         self.data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),

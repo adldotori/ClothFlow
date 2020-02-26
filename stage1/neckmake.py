@@ -75,7 +75,7 @@ def draw_square(pose_dic,H,W):
     UL = 16
     UR = 17
     DL = 2
-    DR = 5
+    DR = 5 
     ul = pose_dic[UL]
     ur = pose_dic[UR]
     dl = pose_dic[DL]

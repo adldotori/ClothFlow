@@ -34,7 +34,7 @@ if IS_TOPS:
     stage = 'tops'
     nc = 2
     checkpoint = 'backup/init_top_6.pth'
-    init_CN = 'backup/CN_top.pth'
+    init_CN = 'backup/CN_top_.pth'
 else:
     stage = 'bottoms'
     nc = 2
@@ -49,12 +49,9 @@ exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default = "TryOn")
-    parser.add_argument("--gpu_ids", default = "1")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
-    parser.add_argument('--local_rank', type=int, default=0)
-    
+    parser.add_argument('-b', '--batch_size', type=int, default=3)
+
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
     parser.add_argument("--datamode", default = "train")
@@ -76,12 +73,11 @@ def get_opt():
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
     parser.add_argument("--smt_loss", type=float, default=2)
-    parser.add_argument("--perc_loss", type=float, default=1)
+    parser.add_argument("--perc_loss", type=float, default=10)
     parser.add_argument("--struct_loss", type=float, default=10)
     parser.add_argument("--stat_loss", type=float, default=-1)
     parser.add_argument("--abs_loss", type=float, default=0)
     parser.add_argument("--save_dir", type=str, default="npz")
-    parser.add_argument("--naming", type=str, default="default")
 
     opt = parser.parse_args()
     return opt
@@ -105,16 +101,16 @@ def train(opt):
 
     Flow = FlowLoss(opt).cuda()
 
-    writer = SummaryWriter(comment = "_" + opt.naming)
+    writer = SummaryWriter()
 
-    # write options in text file
-    if not os.path.exists("./options"): os.mkdir("./options")	
-    f = open("./options/{}.txt".format(opt.naming), "w")
-    temp_opt = vars(opt) 
-    for key in temp_opt:
-       val = temp_opt[key]
-       f.write("{} --- {}\n".format(key, val))
-    f.close()
+    # # write options in text file
+    # if not os.path.exists("./options"): os.mkdir("./options")	
+    # f = open("./options/{}.txt".format(opt.naming), "w")
+    # temp_opt = vars(opt) 
+    # for key in temp_opt:
+    #    val = temp_opt[key]
+    #    f.write("{} --- {}\n".format(key, val))
+    # f.close()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
@@ -159,7 +155,7 @@ def train(opt):
                 optimizer.zero_grad()
 
             if (step+1) % opt.save_img_count == 0 and opt.save_dir != "NONE":
-               _dir = os.path.join(opt.save_dir, opt.naming, str(epoch)+"_"+str(step))
+               _dir = os.path.join(opt.save_dir, opt.stage, str(epoch)+"_"+str(step))
                if not os.path.exists(_dir): 
                    os.makedirs(_dir)
                warp_flow = F[0]
@@ -180,9 +176,9 @@ def train(opt):
                 writer.close()
 
             if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.naming, opt.stage, '%d_%05d.pth' % (epoch, (step+1))))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint.pth'))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = '2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2'
     opt = get_opt()
     train(opt)

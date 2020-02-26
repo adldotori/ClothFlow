@@ -17,8 +17,9 @@ from utils import *
 from Models.networks import *
 from dataloader_MVC import *
 
-EPOCHS = 2
+EPOCHS = 1
 PYRAMID_HEIGHT = 6
+IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
@@ -36,7 +37,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=2)
+    parser.add_argument('-b', '--batch-size', type=int, default=6)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -137,6 +138,6 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'initial_%s_%d_%05d.pth' % (opt.init_name,epoch, (step+1))))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]="2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"
     opt = get_opt()
     train(opt)

@@ -8,3 +8,5 @@ npz/
 result/
 test/
 trained/
+neck/
+runstrain/

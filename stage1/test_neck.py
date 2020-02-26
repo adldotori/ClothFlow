@@ -18,11 +18,11 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3 import *
+from Models.networks_neck import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_MVC import *
+from dataloader_neck import *
 
 PYRAMID_HEIGHT = 5
 IS_TOPS = True

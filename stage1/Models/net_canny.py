@@ -48,7 +48,7 @@ class Sobel(nn.Module):
 	def spatial_gradient(self, input, order=1, normalized=True):
 		return SpatialGradient(order, normalized)(input)
 	def one_hot(self, labels, class_count=3):
-		y = torch.eye(class_count)
+		y = torch.eye(class_count).cuda()
 		return y[labels]
 	def clipped_div(self, x, y, clip_val):
 		eps = torch.ones(y.shape) * 1e-9
@@ -97,8 +97,6 @@ class Sobel(nn.Module):
 		
 		magnitude = torch.sqrt(gx*gx + gy*gy + 1e-9)
 		angle = self.clipped_div(gx, gy, 10.0)
-		# div = torch.unsqueeze(3)
-		# angle = torch.atan(torch.abs(gy) / torch.abs(gx))
 		return magnitude, angle
 
 """
@@ -155,6 +153,11 @@ class ClipValues(nn.Module):
 	def __init__(self):
 		super(ClipValues, self).__init__()
 	def forward(self, x, min_value, max_value):
+		if (len(x.shape) == 4):
+			batch, C, H, W = x.shape
+		elif (len(x.shape) == 3):
+			batch, H, W = x.shape
+			x = x.view(batch, 1, H, W)
 		if min_value < max_value:
 			ret = (min_value <= x) & (x < max_value)
 		else:
@@ -171,9 +174,18 @@ class NonMaximumSuppression(nn.Module):
 		mask2 = torch.from_numpy(mask[1]).unsqueeze(0).cuda()
 		mask3 = torch.from_numpy(mask[2]).unsqueeze(0).cuda()
 
-		output1 = F.conv2d(x, mask1.view(1,1,3,3),padding=1)
-		output2 = F.conv2d(x, mask2.view(1,1,3,3),padding=1)
-		output3 = F.conv2d(x, mask3.view(1,1,3,3),padding=1)
+		if (len(x.shape) == 4):
+			batch, C, H, W = x.shape
+		elif (len(x.shape) == 3):
+			batch, H, W = x.shape
+			x = x.view(batch, 1, H, W)
+		else:
+			print("Wrong shape!!!")
+			return
+
+		output1 = F.conv2d(x, mask1.view(1,1,3,3),padding=1).cuda()
+		output2 = F.conv2d(x, mask2.view(1,1,3,3),padding=1).cuda()
+		output3 = F.conv2d(x, mask3.view(1,1,3,3),padding=1).cuda()
 		temp = torch.cat([output1,output2,output3],1)
 		out = torch.max(temp,axis=1)[0].unsqueeze(1)
 		return (out == x).type(torch.float32)*x
@@ -200,7 +212,7 @@ class ThresholdLayer(nn.Module):
 	def __init__(self):
 		super(ThresholdLayer, self).__init__()
 	def relu_t(self, x, t):
-		mint = torch.ones(x.shape,requires_grad=True) * 1e-9
+		mint = torch.ones(x.shape) * 1e-9
 		mint = mint.cuda()
 		return torch.where(x>=t, x, mint)
 	def forward(self, x, thres):
@@ -208,9 +220,9 @@ class ThresholdLayer(nn.Module):
 		return torch.sigmoid(outputs)
 
 class Canny(nn.Module):
-	def __init__(self):
+	def __init__(self, ch = 3):
 		super(Canny, self).__init__()
-		self.gauss = GaussianSmoothing()
+		self.gauss = GaussianSmoothing(channels = ch)
 		self.sobel = Sobel()
 		self.addition = Addition()
 		self.multiply = Multiply()
@@ -218,7 +230,7 @@ class Canny(nn.Module):
 		self.suppression = NonMaximumSuppression()
 		self.threshold = ThresholdLayer()
 		self.suppressed = None
-	def forward(self, x, low_threshold = 1, gauss=False):
+	def forward(self, x, low_threshold = 11/256, gauss=False):
 		if (gauss == True): x = self.gauss(x)
 		magnitude, direction = self.sobel(x)
 
@@ -234,7 +246,7 @@ class Canny(nn.Module):
 		self.suppressed = suppressed
 
 		low_thresh = self.threshold(suppressed, low_threshold)
-		print("*******************shape: {}".format(low_thresh.shape))
+		
 		return low_thresh
 
 
@@ -253,7 +265,7 @@ def g(x,deg=20):
     return 1 - f(x,deg) - h(x,deg)
 
 def sample_gumbel(shape, eps=1e-30):
-    U = torch.rand(shape).cuda()
+    U = torch.rand(shape)#.cuda()
     return -Variable(torch.log(-torch.log(U + eps) + eps))
 
 def gumbel_softmax_sample(logits, temperature):
@@ -288,7 +300,7 @@ def threshold_process(G,b_lower,b_upper,repeat = 10):
     one_hot = gumbel_softmax(G_,1e-30)
     one_hot = one_hot.view(a,b,c,d)
     one_hot = one_hot.transpose(2,3).transpose(1,2)
-    W = torch.tensor([[[[2.0]],[[1.0]],[[0.0]]]]).cuda()
+    W = torch.tensor([[[[2.0]],[[1.0]],[[0.0]]]])#.cuda()
     B = F.conv2d(one_hot,W)
     #return F.relu(B - 1)
     for i in range(repeat):
@@ -313,6 +325,7 @@ class Canny_full(nn.Module):
 
 if __name__ == "__main__":
 	torch.manual_seed(4)
-	x = torch.rand(2, 3, 512, 512)
+	x = torch.rand(2, 3, 192, 256)
 	model = Canny()
 	model(x, 20)
+

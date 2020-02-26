@@ -40,8 +40,8 @@ def imsave(result,path):
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataroot", default="/home/fashionteam/final_dataset_white")
-    parser.add_argument("--mode", default = "one") # mode = all | one
-    parser.add_argument("--name", default = "raw_0") # valid if mode == one
+    parser.add_argument("--mode", default = "all") # mode = all | one
+    parser.add_argument("--name", default = "test") # valid if mode == one
     parser.add_argument("--version", default = "MVC") # version = MVC | vitons
     parser.add_argument("--is_top", default = True) # valid if version == MVC
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
@@ -54,7 +54,6 @@ def get_opt():
     parser.add_argument("--width", default = 512)
 
     opt = parser.parse_args()
-    print(opt)
     return opt
 
 def load_inputs(opt,name):
@@ -149,7 +148,6 @@ def load_inputs(opt,name):
         one_map = transform_1ch(one_map)
         pose_map[i] = one_map[0]
     
-    print(pose_map.shape)
     results = {
         'cloth' : cloth_,
         'cloth_mask': cloth_mask,
@@ -218,7 +216,7 @@ def main():
         if opt.version=="MVC":
             target_mask = model1(cloth,cloth_mask,target_pose,opt.is_top)
         else:
-            target_mask = model1(cloth,cloth_mask, none)
+            target_mask = model1(cloth,cloth_mask,target_pose)
         target_mask = (target_mask > -0.9).type(torch.float32)
 
         if not os.path.exists(osp.join(opt.result, name)): os.mkdir(osp.join(opt.result,name))

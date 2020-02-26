@@ -97,7 +97,7 @@ def batch(tensor):
 def batch_cuda(tensor):
     if len(tensor.shape) == 2:
         a ,b = tensor.shape
-        return tensor.view(1,a,b).cuda()
+        return tensor.view((1,a,b)).cuda()
     if len(tensor.shape) == 3:
         a,b,c = tensor.shape
         return tensor.view(1,a,b,c).cuda()
