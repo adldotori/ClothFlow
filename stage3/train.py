@@ -24,7 +24,7 @@ from dataloader_MVC import *
 
 EPOCHS = 20
 PYRAMID_HEIGHT = 6
-IS_TOPS = False
+IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
@@ -44,7 +44,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=6)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -150,10 +150,10 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, '%d_%05d.pth' % (epoch, (step+1))))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2'
 
     opt = get_opt()
     train(opt)

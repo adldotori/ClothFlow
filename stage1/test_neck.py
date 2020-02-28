@@ -29,7 +29,7 @@ IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 22
+    in_channels = 23
     checkpoint = 'backup/stage1_top_512.pth'
 else:
     stage = 'bottoms'

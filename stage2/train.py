@@ -26,7 +26,7 @@ from canny import network as CNet
 from canny import loss as CLoss
 
 EPOCHS = 15
-PYRAMID_HEIGHT = 6
+PYRAMID_HEIGHT = 5
 NUM_STAGE = '2'
 IS_TOPS = False
 
@@ -72,9 +72,9 @@ def get_opt():
     parser.add_argument("--loss_count", type=int, default = 10)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
-    parser.add_argument("--smt_loss", type=float, default=1)
-    parser.add_argument("--perc_loss", type=float, default=5)
-    parser.add_argument("--struct_loss", type=float, default=15)
+    parser.add_argument("--smt_loss", type=float, default=2)
+    parser.add_argument("--perc_loss", type=float, default=1)
+    parser.add_argument("--struct_loss", type=float, default=10)
     parser.add_argument("--stat_loss", type=float, default=-1)
     parser.add_argument("--abs_loss", type=float, default=0)
     parser.add_argument("--save_dir", type=str, default="npz")
@@ -176,7 +176,7 @@ def train(opt):
                 writer.close()
 
             if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint.pth'))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'

@@ -19,9 +19,6 @@ import time
 sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
-from Models.LossS3 import *
-from Models.net_canny import *
-from Models.loss_canny import *
 from dataloader_MVC import *
 
 PYRAMID_HEIGHT = 5
@@ -42,12 +39,12 @@ if REAL_TEST:
 else:
     dataroot = '/home/fashionteam/dataset_MVC_'+stage
     datalist = 'train_MVC'+stage+'_pair.txt'
-    result_dir = osp.join(PWD,'result/warped_mask/',stage)
+    result_dir = osp.join(PWD,'result/warped_mask_6/',stage)
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=6)
+    parser.add_argument('-b', '--batch_size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -102,6 +99,7 @@ def test(opt):
             tar_body_mask = inputs['target_body_shape'].cuda()
 
         if IS_TOPS:
+            print(con_cloth.shape, con_cloth_mask.shape, pose.shape)
             result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
         else:
             result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
@@ -120,7 +118,7 @@ def test(opt):
         #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
         #         epoch+1, (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
         #         100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
-
+        # result = (result > -0.9).type(torch.float32)
         save_images(result, name, opt.result_dir)
 
 if __name__ == '__main__':

@@ -24,7 +24,6 @@ import pickle
 from stage0 import neckmake
 import torch.nn.functional as Ftnl
 
-
 def imsave(result,path):
     img = (result[0].clone()+1)*0.5 * 255
     if img.shape[0] == 1:
@@ -35,21 +34,19 @@ def imsave(result,path):
     img = img.detach().numpy().astype('uint8')
     Image.fromarray(img).save(path)
 
-
-
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataroot", default="/home/fashionteam/final_dataset_white")
-    parser.add_argument("--mode", default = "all") # mode = all | one
-    parser.add_argument("--name", default = "raw_0") # valid if mode == one
+    parser.add_argument("--mode", default = "one") # mode = all | one
+    parser.add_argument("--name", default = "raw_1") # valid if mode == one
     parser.add_argument("--version", default = "MVC") # version = MVC | vitons
     parser.add_argument("--is_top", default = True) # valid if version == MVC
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
     parser.add_argument("--stage1_model_pth", default = "backup/stage1_top_512.pth")
-    parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_0.pth")
+    parser.add_argument("--stage2_model_pth", default = "backup/stage2_top_512.pth")
     parser.add_argument("--stage3_model_pth", default = "backup/stage3_top_512.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "backup/CN_top_.pth")
-    parser.add_argument("--result", default = "test")
+    parser.add_argument("--result", default = "test6")
     parser.add_argument("--height", default = 512)
     parser.add_argument("--width", default = 512)
 
@@ -125,6 +122,15 @@ def load_inputs(opt,name):
       shape = neckmake.fullmake(shape,pose_data) 
       shape = torch.from_numpy(shape)
 
+    else:
+        pose_key = [k for k in pose_data]
+        if (16 not in pose_key) or (17 not in pose_key) or (2 not in pose_key) or (5 not in pose_key) or (3 not in pose_key) or (6 not in pose_key):
+            shape = shape
+            shape = torch.from_numpy(shape)
+        else:
+            shape = neckmake.fullmake(shape, pose_data)
+            shape = torch.from_numpy(shape)
+
     point_num = 18
     pose_map = torch.zeros(point_num, H, W)
     r = 5
@@ -149,7 +155,6 @@ def load_inputs(opt,name):
         one_map = transform_1ch(one_map)
         pose_map[i] = one_map[0]
     
-    print(pose_map.shape)
     results = {
         'cloth' : cloth_,
         'cloth_mask': cloth_mask,
@@ -181,7 +186,7 @@ def main():
     #device = torch.device("cuda:2")
     #model1.to(device)
     model1 = nn.DataParallel(model1,output_device=1)
-    model2 = M2.FlowNet(6,4,1)
+    model2 = M2.FlowNet(5,4,1)
     #device = torch.device("cuda:2")
     #model2.to(device)
     model2 = nn.DataParallel(model2,output_device=1)
@@ -215,13 +220,15 @@ def main():
         cloth_mask = batch_cuda(inputs["cloth_mask"])
         target_mask_real = batch_cuda(inputs["crop_cloth_mask"])
         target_pose = batch_cuda(inputs["pose"])
+        # shape = batch_cuda(inputs["shape"])
         if opt.version=="MVC":
+            print(cloth.shape, cloth_mask.shape, target_pose.shape)
             target_mask = model1(cloth,cloth_mask,target_pose,opt.is_top)
         else:
             target_mask = model1(cloth,cloth_mask, none)
         target_mask = (target_mask > -0.9).type(torch.float32)
 
-        if not os.path.exists(osp.join(opt.result, name)): os.mkdir(osp.join(opt.result,name))
+        if not os.path.exists(osp.join(opt.result, name)): os.makedirs(osp.join(opt.result,name))
         imsave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
 
         if opt.version=="MVC":

@@ -8,31 +8,31 @@ def imsave(nparray,fname):
     Image.fromarray(nparray).save(fname)
 
 TARGET_SIZE = (512,512)
-base_dir = "/home/fashionteam/viton/"
-folder_list = os.listdir(base_dir)
+base_dir = "/home/fashionteam/viton_resize/train/image/"
+image_list = os.listdir(base_dir)
 
-t = 0
-for i, folder in enumerate(folder_list):
-#    image_list = os.listdir(os.path.join(base_dir, folder))
-#    image_list = [image for image in image_list if os.path.isfile(os.path.join(base_dir, folder, image)) and '4x' in image and not ('resize' in image)]
-    image_list = ['cloth.png', 'cloth_mask.png']
-    for image in image_list:            
-        I = Image.open(os.path.join(base_dir, folder, image))
-        I = np.array(I)
+# t = 0
+# for i, folder in enumerate(folder_list):
+# #    image_list = os.listdir(os.path.join(base_dir, folder))
+# #    image_list = [image for image in image_list if os.path.isfile(os.path.join(base_dir, folder, image)) and '4x' in image and not ('resize' in image)]
+#     image_list = ['cloth.png', 'cloth_mask.png']
+#     for image in image_list:            
+#         I = Image.open(os.path.join(base_dir, folder, image))
+#         I = np.array(I)
         
-		  try:
-            if (image == "cloth.png"):
-                img = np.pad(I, ((0,0),(32,32),(0,0)), 'constant', constant_values=(0))
-            else:
-                img = np.pad(I, ((0,0),(32, 32)), "constant", constant_values=(0))		
-        except:
-            print('ERROR', image)
-            continue
+#         try:
+#             if (image == "cloth.png"):
+#                 img = np.pad(I, ((0,0),(32,32),(0,0)), 'edge')
+#             else:
+#                 img = np.pad(I, ((0,0),(32, 32)), "constant", constant_values=(0))		
+#         except:
+#             print('ERROR', image)
+#             continue
         
-        img = cv2.resize(I, TARGET_SIZE)
-        print(i, image)
-#        imsave(img, osp.join(base_dir,folder, image.split('.')[0]+'_resize.jpg'))
-        imsave(img, osp.join(base_dir, folder, image))
+#         img = cv2.resize(img, TARGET_SIZE)
+#         print(i, image)
+# #        imsave(img, osp.join(base_dir,folder, image.split('.')[0]+'_resize.jpg'))
+#         imsave(img, osp.join('/home/fashionteam/viton_re/', folder, image))
 
         # if os.path.isdir(os.path.join(base_dir, folder, image.split('-')[1])) and image.split('-')[1] in ['p','1','3']:
         #     # if not (osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_resize.jpg')) and osp.isfile(osp.join(base_dir, folder, image.split('-')[1], 'segment_vis_resize.jpg'))):
@@ -52,3 +52,21 @@ for i, folder in enumerate(folder_list):
         #         print(image)
         # else:
         #     print(folder,image,'There is not dir')
+
+for i, image in enumerate(image_list):
+#    image_list = os.listdir(os.path.join(base_dir, folder))
+#    image_list = [image for image in image_list if os.path.isfile(os.path.join(base_dir, folder, image)) and '4x' in image and not ('resize' in image)]
+
+    I = Image.open(os.path.join(base_dir, image))
+    I = np.array(I)
+    
+    try:
+        img = np.pad(I, ((0,0),(32,32),(0,0)), 'edge')
+    except:
+        print('ERROR', image)
+        continue
+    
+    # img = cv2.resize(img, TARGET_SIZE)
+    print(i, image)
+#        imsave(img, osp.join(base_dir,folder, image.split('.')[0]+'_resize.jpg'))
+    imsave(img, osp.join('/home/fashionteam/viton_512/train/', image))

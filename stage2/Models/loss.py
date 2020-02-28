@@ -156,8 +156,8 @@ class FlowLoss(nn.Module):
         return self.vgg_loss(ex_src_mask*src_cloth, ex_tar_mask*tar_cloth)
     
     def loss_smt(self, mat):
-        return (torch.sum(mat[:, :, :, 1:] - mat[:, :, :, :-1]) + \
-				  torch.sum(mat[:, :, 1:, :] - mat[:, :, :-1, :])) / (mat.shape[2] * mat.shape[3])
+        return (torch.sum(torch.abs(mat[:, :, :, 1:] - mat[:, :, :, :-1])) + \
+				  torch.sum(torch.abs(mat[:, :, 1:, :] - mat[:, :, :-1, :]))) / (mat.shape[2] * mat.shape[3])
 
         # return (torch.sum(torch.abs(mat[:, :, :, :-2] + mat[:, :, :, 2:] - 2*mat[:, :, :, 1:-1])) + \
 		# 		  torch.sum(torch.abs(mat[:, :, :-2, :] + mat[:, :, 2:, :] - 2 * mat[:, :, 1:-1, :]))) / (mat.shape[2] * mat.shape[3])

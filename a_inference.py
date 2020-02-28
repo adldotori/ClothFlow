@@ -3,7 +3,7 @@ sys.path.append("stage1")
 sys.path.append("stage2")
 sys.path.append("stage3")
 from utils import *
-from stage1.Models import UNetS3 as M1
+from stage1.Models import networks_neck as M1
 from stage2.Models import networks as M2
 from stage3.Models import UNetS3 as M3
 from stage2.Models import ClothNormalize_proj as CN
@@ -35,21 +35,30 @@ def imsave(result,path):
     img = img.detach().numpy().astype('uint8')
     Image.fromarray(img).save(path)
 
+def masksave(result, path):
+	img = (result[0].clone()) * 255
+	if img.shape[0] == 1:
+		img = img[0, :, :]
+	else: 
+		img = img.transpose(0, 1).transpose(1, 2)
+	img = img.cpu().clamp(0, 255)
+	img = img.detach().numpy().astype('uint8')
+	Image.fromarray(img).save(path)
 
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="/home/fashionteam/final_dataset_white")
+    parser.add_argument("--dataroot", default="/home/fashionteam/ClothFlow/a_dataset/similar_body")
     parser.add_argument("--mode", default = "all") # mode = all | one
     parser.add_argument("--name", default = "test") # valid if mode == one
     parser.add_argument("--version", default = "MVC") # version = MVC | vitons
     parser.add_argument("--is_top", default = True) # valid if version == MVC
-    parser.add_argument("--PYRAMID_HEIGHT", default = 5)
-    parser.add_argument("--stage1_model_pth", default = "backup/stage1_top_512.pth")
-    parser.add_argument("--stage2_model_pth", default = "backup/stage2_top_512.pth")
+    parser.add_argument("--PYRAMID_HEIGHT", default = 6)
+    parser.add_argument("--stage1_model_pth", default = "backup/checkpoint_1.pth")
+    parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_0.pth")
     parser.add_argument("--stage3_model_pth", default = "backup/stage3_top_512.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "backup/CN_top.pth")
-    parser.add_argument("--result", default = "test")
+    parser.add_argument("--result", default = "test5")
     parser.add_argument("--height", default = 512)
     parser.add_argument("--width", default = 512)
 
@@ -101,7 +110,6 @@ def load_inputs(opt,name):
                 (parse_array == 7).astype(np.float32)
     arms = (parse_array == 15).astype(np.float32) + \
                 (parse_array == 14).astype(np.float32)
-        
     pants = (parse_array == 9).astype(np.float32) + \
                 (parse_array == 12).astype(np.float32)
     
@@ -123,6 +131,15 @@ def load_inputs(opt,name):
     if (opt.version == 'viton'):
       shape = neckmake.fullmake(shape,pose_data) 
       shape = torch.from_numpy(shape)
+
+    else:
+        pose_key = [k for k in pose_data]
+        if (16 not in pose_key) or (17 not in pose_key) or (2 not in pose_key) or (5 not in pose_key) or (3 not in pose_key) or (6 not in pose_key):
+            shape = shape
+            shape = torch.from_numpy(shape)
+        else:
+            shape = neckmake.fullmake(shape, pose_data)
+            shape = torch.from_numpy(shape)
 
     point_num = 18
     pose_map = torch.zeros(point_num, H, W)
@@ -175,7 +192,7 @@ def main():
     opt = get_opt()
     PYRAMID_HEIGHT = opt.PYRAMID_HEIGHT
 
-    model1 = M1.UNet(opt,22,5)
+    model1 = M1.UNet(opt,23,5)
     #device = torch.device("cuda:2")
     #model1.to(device)
     model1 = nn.DataParallel(model1,output_device=1)
@@ -213,14 +230,21 @@ def main():
         cloth_mask = batch_cuda(inputs["cloth_mask"])
         target_mask_real = batch_cuda(inputs["crop_cloth_mask"])
         target_pose = batch_cuda(inputs["pose"])
+        shape = batch_cuda(inputs["shape"])
+        print(target_pose.shape)
         if opt.version=="MVC":
-            target_mask = model1(cloth,cloth_mask,target_pose,opt.is_top)
+            target_mask = model1(cloth,cloth_mask,target_pose,opt.is_top,shape)
         else:
             target_mask = model1(cloth,cloth_mask,target_pose)
         target_mask = (target_mask > -0.9).type(torch.float32)
 
-        if not os.path.exists(osp.join(opt.result, name)): os.mkdir(osp.join(opt.result,name))
+        if not os.path.exists(osp.join(opt.result, name)): os.makedirs(osp.join(opt.result,name))
         imsave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
+        imsave(cloth, osp.join(opt.result, name, "cloth.jpg"))
+
+        masksave(cloth_mask, osp.join(opt.result, name, "cloth_mask.jpg"))
+        
+        masksave(target_mask_real.view(target_mask_real.shape[0], 1, target_mask_real.shape[1], target_mask_real.shape[2]), osp.join(opt.result, name, "target_mask.jpg"))
 
         if opt.version=="MVC":
             params = model_CN(cloth_mask,target_mask)
@@ -260,6 +284,7 @@ def main():
         else:
             result = model3(cloth,off_cloth,pose,warped,shape,head,pants)
         imsave(off_cloth,osp.join(opt.result,name,"off_cloth.jpg"))
+        imsave(answer, osp.join(opt.result, name, "image.jpg"))
         img = (result[0].clone()+1)*0.5 * 255
         img = img.transpose(0,1).transpose(1,2)
         img = img.cpu().clamp(0,255)

@@ -23,12 +23,13 @@ from Models.ClothNormalize_proj import *
 from dataloader_MVC import *
 
 PYRAMID_HEIGHT = 6
-IS_TOPS = False
+IS_TOPS = True
+TENSORBOARD = False
 
 if IS_TOPS:
     stage = 'tops'
     nc = 2
-    checkpoint = 'backup/stage2_top_512_.pth'
+    checkpoint = 'stage2/checkpoints/tops/checkpoint_1.pth'
     init_CN = 'backup/CN_top_.pth'
 else:
     stage = 'bottoms'
@@ -40,7 +41,7 @@ dataroot = '/home/fashionteam/dataset_MVC_'+stage
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
-result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth_3/'+stage
 exp = 'train/'+stage
 
 def get_opt():
@@ -99,7 +100,7 @@ def test(opt):
     theta_generator.eval()
 
     writer = SummaryWriter()
-    
+
     rangelist = range(len(test_loader.dataset)//opt.batch_size + 1)
     for step in tqdm(rangelist, desc='step') if TENSORBOARD else rangelist:
         cnt = step + 1
