@@ -107,23 +107,23 @@ def fullmake(mask,pose_dic):
     result = np.clip(penta + mask,0,1).astype(np.float32)
     return result
 
-def setup(to_path,datamode,base_dir="/home/fashionteam/viton_resize/",namelist="viton_neckmask_"):
-    parseroot = osp.join(base_dir,datamode,"image-parse")
+def setup(to_path,datamode,base_dir="/home/fashionteam/viton_512/",namelist="viton_neckmask_"):
+    parseroot = osp.join(base_dir,datamode,"image-seg")
     poseroot = osp.join(base_dir,datamode,"pose_pkl")
     namelist_path = namelist + datamode + ".pkl"
     nlist = load_pkl(namelist_path)
-    pose_footer = "_0_keypoints.pkl"
+    pose_footer = "_0.pkl"
     parse_footer = "_0.png"
     for i in range(len(nlist)):
         pose_name = nlist[i] + pose_footer
         pose_dic = load_pkl(osp.join(poseroot,pose_name))
         parse_name = nlist[i] + parse_footer
         mask = (np.array(Image.open(osp.join(parseroot,parse_name))) > 0).astype(np.float32)
+        if not (2 in list(pose_dic.keys()) and 3 in list(pose_dic.keys()) and 5 in list(pose_dic.keys()) and 6 in list(pose_dic.keys()) and 16 in list(pose_dic.keys()) and 17 in list(pose_dic.keys())):
+            print(pose_dic.keys())
+            continue
         result = (fullmake(mask,pose_dic) * 255).astype(np.uint8)
-        Image.fromarray(result).save(osp.join(to_path,datamode,parse_name))
+        Image.fromarray(result).save(osp.join(to_path,datamode,'image-mask',parse_name))
 
 if __name__ == '__main__':
-    setup("/home/fashionteam/bodyshape","train")
-        
-
-
+    setup("/home/fashionteam/viton_512/","train")

@@ -124,7 +124,7 @@ class UpConv(nn.Module):
 
 class UNet(nn.Module):
 
-    def __init__(self, opt, in_channels=19, depth=4,
+    def __init__(self, opt, in_channels=19, depth=5,
                  start_filts=64, up_mode='transpose',
                  merge_mode='concat'):
         """
@@ -188,15 +188,15 @@ class UNet(nn.Module):
             self.cloth_warp.append(down_conv)
         """
 
-        self.bottle_0 = nn.Sequential(nn.Conv2d(512,512,3,1,1),
-                                    nn.InstanceNorm2d(512),
+        self.bottle_0 = nn.Sequential(nn.Conv2d(1024,1024,3,1,1),
+                                    nn.InstanceNorm2d(1024),
                                     nn.LeakyReLU(0.2, True))
-        self.bottle_1 = nn.Sequential(nn.Conv2d(512,512,3, dilation=2, padding=2, bias=False),
-                                    nn.InstanceNorm2d(512),
+        self.bottle_1 = nn.Sequential(nn.Conv2d(1024,1024,3, dilation=2, padding=2, bias=False),
+                                    nn.InstanceNorm2d(1024),
                                     nn.LeakyReLU(0.2, True)
                                     )
-        self.bottle_2 = nn.Sequential(nn.Conv2d(512, 512, 3, dilation=4, padding=4, bias=False),
-                                      nn.InstanceNorm2d(512),
+        self.bottle_2 = nn.Sequential(nn.Conv2d(1024, 1024, 3, dilation=4, padding=4, bias=False),
+                                      nn.InstanceNorm2d(1024),
                                       nn.LeakyReLU(0.2, True)
                                       )
 
@@ -243,17 +243,21 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, cloth, source_image,pants,warped_cloth=None,mask=None,head=None,target_pose=None):
+    def forward(self, off_cloth, pose, warped, head):
         encoder_outs = []
-        try:
-            len(target_pose)
-            x = torch.cat((cloth,source_image,target_pose,warped_cloth,head,pants), 1)
-        except:
-            x = torch.cat((cloth,source_image,pants), 1)
+        x = torch.cat((off_cloth,pose,warped,head), 1)
+
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)
             encoder_outs.append(before_pool)
+    # def forward(self, off_cloth, target_pose, cn_cloth, warped_cloth, head, pants):
+    #     encoder_outs = []
+    #     x = torch.cat((off_cloth, target_pose, cn_cloth, warped_cloth, head, pants), 1)
+    #     # encoder pathway, save outputs for merging
+    #     for i, module in enumerate(self.down_convs):
+    #         x, before_pool = module(x)
+    #         encoder_outs.append(before_pool)
 
         """
         y = cloth

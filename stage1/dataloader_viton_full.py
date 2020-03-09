@@ -11,13 +11,10 @@ import numpy as np
 import json
 import pickle
 import sys
-sys.path.append("..")
 import neckmake
 
 #import time
-
-INPUT_SIZE = (512, 512)
-
+INPUT_SIZE = (512,512)
 def load_pkl(name):
     with open(name,"rb") as f:
         data = pickle.load(f)
@@ -35,24 +32,26 @@ class CFDataset(data.Dataset):
         self.opt = opt
         self.root = opt.dataroot
         self.datamode = opt.datamode # train or test or self-defined
-        self.stage = opt.stage # GMM or TOM
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
         self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
-        self.warped_cloth_path = opt.dataroot_cloth
-        self.warped_mask_path = opt.dataroot_mask
+        # self.warped_cloth_path = osp.join(opt.warped_cloth_path,opt.datamode)
+        # self.warped_mask_path = osp.join(opt.warped_mask_path,opt.datamode)
         
         # load data list
         #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_list_"+self.datamode+".pkl"))
 
     def name(self):
         return "CFDataset"
 
     def __getitem__(self, index):
+
+
+        #name = naming(self.image_files[index])
         name = self.image_files[index]
 
         # cloth image & cloth mask
@@ -65,9 +64,9 @@ class CFDataset(data.Dataset):
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
 
         image = Image.open(path_image)
-        warped = Image.open(osp.join(self.warped_cloth_path,name+".jpg"))
-        warped_mask = Image.open(osp.join(self.warped_mask_path,name+".jpg"))
-        warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
+        # warped = Image.open(osp.join(self.warped_cloth_path,name+".jpg"))
+        # warped_mask = Image.open(osp.join(self.warped_mask_path,name+".jpg"))
+        # warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
         #warped_mask = torch.from_numpy(warped_mask)
         #warped_mask = warped_mask.unsqueeze_(0)
 
@@ -83,15 +82,21 @@ class CFDataset(data.Dataset):
 
         cloth_ = self.transform(cloth)
         image = self.transform(image)
-        warped = self.transform(warped)
+        # warped = self.transform(warped)
 
         # parsing and pose path
-        path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
+        path_seg = osp.join(self.data_path, "image-parse", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
 
         # segment processing
         seg = Image.open(path_seg)
         parse_array = np.array(seg)
+
+        parse_fla = parse_array.reshape(H*W, 1)
+        parse_fla = torch.from_numpy(parse_fla).long()
+        parse = torch.zeros(H*W, 20).scatter_(1, parse_fla, 1)
+        parse = parse.view(H, W, 20)
+        parse = parse.transpose(2, 0).transpose(2,1).contiguous()  # [20,256,192]
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
         head = (parse_array == 1).astype(np.float32) + \
@@ -108,26 +113,60 @@ class CFDataset(data.Dataset):
         pants = (parse_array == 9).astype(np.float32) + \
                   (parse_array == 12).astype(np.float32)
 
+        # body_shape = shape
+        # shape_array = np.asarray(body_shape)
+        # body_fla = shape_array.reshape(H*W,1)
+        # body_fla = torch.from_numpy(body_fla).long()
+        # one_hot = torch.zeros(H*W, 2).scatter_(1, body_fla, 1)
+        # one_hot = one_hot.view(H, W, 2)
+        # one_hot = one_hot.transpose(2, 0).transpose(1, 2).contiguous() #[2,256,192]
+
+        # shape = Image.fromarray((shape*255).astype(np.uint8))
+        # shape_sample = shape.resize((self.fine_width//16, self.fine_height//16),Image.BILINEAR)
+        # shape_sample = shape_sample.resize((self.fine_width, self.fine_height),Image.BILINEAR)
+
+
+        # cloth_sample = Image.fromarray((cloth*255).astype(np.uint8)) # downsampling of cloth on the person
+        # cloth_sample = cloth_sample.resize((self.fine_width//4, self.fine_height//4), Image.BILINEAR)
+        # cloth_sample = cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
+        # shape_sample = self.transform_1ch(shape_sample)
+
+        head = torch.from_numpy(head)
         cloth = torch.from_numpy(cloth)
-        warped_mask = torch.from_numpy(warped_mask)
+        # warped_mask = torch.from_numpy(warped_mask)
         arms = torch.from_numpy(arms)
         pants = torch.from_numpy(pants)
+        #shape = torch.from_numpy(shape)
+        # cloth_sample = self.transform_1ch(cloth_sample)
+        #c_cloth_sample = self.transform(c_cloth_sample)
+
         
         crop_head = image * head + (1 - head)
         crop_cloth = image * cloth + (1 - cloth)
-        off_cloth = image * (1-warped_mask) + warped_mask
+        # off_cloth = image * (1-warped_mask) + warped_mask
         crop_arms = image * arms + (1-arms)
-        crop_pants = (image * pants + (1-pants)) * (1 - warped_mask) + warped_mask
+        crop_pants = image * pants + (1-pants)
 
-        cloth.unsqueeze_(0)
 
+
+        """
+        c_pose_data = - np.ones((18, 2), dtype=int)
+        with open(path_c_pose, 'rb') as f:
+            pose_label = pickle.load(f)
+            for i in range(18):
+                if pose_label['subset'][0, i] != -1:
+                    c_pose_data[i, :] = pose_label['candidate'][int(pose_label['subset'][0, i]), :2]
+            c_pose_data = np.asarray(c_pose_data)
+        """
+        #start_time = time.time()
+        ###
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)
         pose_data = pose_label
 
         shape = neckmake.fullmake(shape,pose_data)
         shape = torch.from_numpy(shape)
-        shape.unsqueeze_(0)
+        ###
 
         point_num = 18
         pose_map = torch.zeros(point_num, H, W)
@@ -144,30 +183,55 @@ class CFDataset(data.Dataset):
                 pointx = -1
                 pointy = -1
 
+            #c_pointx = c_pointx * 192 / 762
+            #c_pointy = c_pointy * 256 / 1000
             if pointx > 1 and pointy > 1:
                 draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
                 pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
             one_map = self.transform_1ch(one_map)
             pose_map[i] = one_map[0]
 
+        """
+        t_pose_data = - np.ones((18, 2), dtype=int)
+        with open(path_t_pose, 'rb') as f:
+            pose_label = pickle.load(f)
+            for i in range(18):
+                if pose_label['subset'][0, i] != -1:
+                    t_pose_data[i, :] = pose_label['candidate'][int(pose_label['subset'][0, i]), :2]
+            t_pose_data = np.asarray(t_pose_data)
+        """
+    
         result = {
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
             'image': image,  # source image
             'head': crop_head,# cropped head from source image
             'pose': pose_map,#pose map
-            'tar_mask': shape,
+            'shape': shape,
+            # 'shape_sample': shape_sample,
+            #'grid_image': im_g,
+            # if self.opt.stage == "GMM":
+            #     'target_softmax_shape': target_softmax_shape,
+            # 'one_hot': one_hot,# one_hot - body shape
             'upper_mask': cloth,# cropped cloth mask
+            # 'head_mask': head,#head mask
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
             'name' : name,
-            'warped' : warped,
-            'off_cloth': off_cloth,#source image - cloth
-            # 'parse' : parse,
+            # 'warped' : warped,
+            # 'off_cloth': off_cloth,#source image - cloth
+            'parse' : parse,
+            # 'cloth_sample': cloth_sample,#coarse cloth mask
+            # 'arms_mask': arms,
             'pants_mask': pants,
             'crop_pants': crop_pants,
+            'crop_arms': crop_arms,
             }
+        #for i in result.keys():
+        #    print("%s - type: %s" %(i,type(result[i])))
+        # print(t_shape.shape, c_shape.shape, t_shape_mask.shape, im_g.shape)
         return result
+
 
     def __len__(self):
         return len(self.image_files)
@@ -176,11 +240,7 @@ class CFDataLoader(object):
     def __init__(self, opt, dataset):
         super(CFDataLoader, self).__init__()
 
-        if opt.shuffle :
-            train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
-        else:
-            train_sampler = None
-
+        train_sampler = None
         self.data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
                 num_workers=opt.workers, pin_memory=True, sampler=train_sampler)

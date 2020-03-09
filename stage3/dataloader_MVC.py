@@ -222,10 +222,7 @@ class CFDataset(data.Dataset):
         
         crop_head = t_image * head + (1 - head)
         crop_cloth = t_image * crop_cloth + (1 - crop_cloth)
-        if self.is_tops:
-            off_cloth = t_image * (1-warped_mask) + warped_mask
-        else:
-            off_cloth = t_image * (1-pants) + pants
+        off_cloth = t_image * (1-warped_mask) + warped_mask
         crop_arms = t_image * arms + (1-arms)
         crop_pants = t_image * pants + (1-pants)
         #print(t_body_parse.shape)

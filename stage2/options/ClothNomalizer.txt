@@ -1,9 +1,9 @@
 name --- TryOn
 gpu_ids --- 0
 workers --- 1
-batch_size --- 60
+batch_size --- 8
 local_rank --- 0
-dataroot --- /home/fashionteam/dataset_MVC_tops
+dataroot --- /home/fashionteam/viton_512/
 dataroot_mask --- /home/fashionteam/ClothFlow/result/warped_mask/tops
 datamode --- train
 stage --- 1

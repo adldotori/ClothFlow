@@ -22,7 +22,7 @@ import sys
 sys.path.append('..')
 from utils import *
 from Models.ClothNormalize_proj import *
-from dataloader_MVC import *
+from dataloader_viton import *
 
 EPOCHS = 15
 PYRAMID_HEIGHT = 5
@@ -32,7 +32,7 @@ if IS_TOPS:
     stage = 'tops'
 else:
     stage = 'bottoms'
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot = '/home/fashionteam/viton_512/'
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/Cloth_Normalizer/'+stage
@@ -68,7 +68,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=60)
+    parser.add_argument('-b', '--batch-size', type=int, default=8)
     parser.add_argument('--local_rank', type=int, default=0)
     
     parser.add_argument("--dataroot", default = dataroot)
@@ -140,13 +140,10 @@ def train(opt,train_loader,model):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
             inputs = train_loader.next_batch()
 
-            # c_pose = inputs['c_pose'].cuda()
-            # t_pose = inputs['t_pose'].cuda()
             con_cloth_mask = inputs['cloth_mask'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
             con_cloth = inputs['cloth'].cuda()
-            tar_cloth = inputs['crop_cloth'].cuda()
-            t_name = inputs['t_name']
+            tar_cloth = inputs['tar_cloth'].cuda()
 
             param = model(con_cloth_mask, tar_cloth_mask)
             print(param.shape, con_cloth_mask.shape)
@@ -157,7 +154,7 @@ def train(opt,train_loader,model):
             print(grid.shape)
             transformed = Ftnl.grid_sample(con_cloth_mask, grid)
             transformed_cloth = Ftnl.grid_sample(con_cloth, grid)
-
+            transformed_cloth = transformed_cloth * transformed + (1 - transformed)
             if (step+1) % opt.save_img_count == 0:
                 writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
                 writer.add_image("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
@@ -181,37 +178,19 @@ def train(opt,train_loader,model):
 
             ####
 
-            rotate = np.array(t_name)
-            print(rotate)
-            rotate = np.where(rotate=='3', 0.8, rotate)
-            rotate = np.where(rotate=='1', -0.8, rotate)
-            rotate = np.where(rotate=='p', 0, rotate)
-            rotate = rotate.astype(float)
-            rotate = torch.unsqueeze(torch.from_numpy(rotate),1).cuda()
-            print(rotate)
+            # rotate = np.array(name)
+            # print(rotate)
+            # rotate = np.where(rotate=='3', 0.8, rotate)
+            # rotate = np.where(rotate=='1', -0.8, rotate)
+            # rotate = np.where(rotate=='p', 0, rotate)
+            # rotate = rotate.astype(float)
+            # rotate = torch.unsqueeze(torch.from_numpy(rotate),1).cuda()
+            # print(rotate)
             loss = 0
 
-            if cnt < 150:
-                grid_loss = (grid-AAA)**2
-                grid_loss = torch.mean(torch.sqrt(torch.sum(grid_loss,axis=3)))
-                writer.add_scalar("loss/grid_loss", grid_loss,cnt)
-                initial_loss = L1(grid_loss,AAA)
-                writer.add_scalar("loss/initial_loss", initial_loss,cnt)
-                scale_loss = L1(param[:, 2:3], torch.zeros(param[:, 2:3].shape).cuda()) * 10
-                writer.add_scalar("loss/scale_loss", scale_loss,cnt)    
-                # theta_loss = L1(param[:, 3:], torch.zeros(param[:, 3:].shape).cuda()) * 10
-                # writer.add_scalar("loss/theta_loss", theta_loss,cnt)
-                loss = loss + initial_loss + scale_loss #+ theta_loss
-
-            if cnt >= 100:
-                rotate_loss = L1(param[:, 3:], rotate)
-                writer.add_scalar("loss/rotate_loss", rotate_loss,cnt)
-                loss = loss + rotate_loss
-
-            if cnt >= 400:
-                original_loss = torch.mean(torch.abs(Ftnl.leaky_relu(tar_cloth_mask-transformed,0.8))) * 10
-                writer.add_scalar("loss/original_loss", original_loss,cnt)
-                loss = loss + original_loss #+ det_loss
+            original_loss = torch.mean(torch.abs(Ftnl.leaky_relu(tar_cloth_mask-transformed,0.8)))
+            writer.add_scalar("loss/original_loss", original_loss,cnt)
+            loss = loss + original_loss #+ det_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -237,7 +216,6 @@ def train(opt,train_loader,model):
                 model.cuda()
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "1"
     opt = get_opt()
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)

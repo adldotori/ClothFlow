@@ -9,10 +9,10 @@ from torch.nn import init
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
 from torchvision import models, transforms
-from Models.loss import *
+from Models.loss_ccccc import *
 
 DEBUG = False
-MAX_CH = 512
+MAX_CH = 256
 SMOOTH = False 
 
 """
@@ -194,7 +194,7 @@ class FlowNet(nn.Module):
 	# def get_N(self):
 	# 	return self.N
 
-	def forward(self, src, tar):
+	def forward(self, src, tar,con_cloth_mask):
 			src_conv = self.SourceFPN(src)
 			tar_conv = self.TargetFPN(tar)
 			
@@ -210,10 +210,11 @@ class FlowNet(nn.Module):
 
 			self.result = self.stn(src, self.F[0])
 			self.warp_cloth = self.stn(src[:,0:3,:,:], self.F[0])
-			self.warp_mask = self.stn(src[:,3:4,:,:], self.F[0])
+			self.warp_canny = self.stn(src[:,3:4,:,:], self.F[0])
+			self.warp_mask = self.stn(con_cloth_mask, self.F[0])
 			self.tar_mask = tar
 
-			return self.F, self.warp_cloth, self.warp_mask
+			return self.F, self.warp_cloth, self.warp_canny, self.warp_mask
 
 def test_FPN():
 	return FPN(4, [3, 32, 64, 128])

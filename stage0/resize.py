@@ -3,14 +3,18 @@ import os.path as osp
 import numpy as np
 import cv2
 from PIL import Image
+import random
 
 def imsave(nparray,fname):
     Image.fromarray(nparray).save(fname)
 
 TARGET_SIZE = (512,512)
-base_dir = "/home/fashionteam/viton_resize/train/image/"
+base_dir = "/home/fashionteam/underwear/image/"
+target_dir = "/home/fashionteam/underwear_512/"
 image_list = os.listdir(base_dir)
 
+if not os.path.isdir(target_dir):
+    os.makedirs(target_dir)
 # t = 0
 # for i, folder in enumerate(folder_list):
 # #    image_list = os.listdir(os.path.join(base_dir, folder))
@@ -53,6 +57,7 @@ image_list = os.listdir(base_dir)
         # else:
         #     print(folder,image,'There is not dir')
 
+# os.makedirs('/home/fashionteam/viton_512/train/cloth-mask_/')
 for i, image in enumerate(image_list):
 #    image_list = os.listdir(os.path.join(base_dir, folder))
 #    image_list = [image for image in image_list if os.path.isfile(os.path.join(base_dir, folder, image)) and '4x' in image and not ('resize' in image)]
@@ -61,7 +66,7 @@ for i, image in enumerate(image_list):
     I = np.array(I)
     
     try:
-        img = np.pad(I, ((0,0),(32,32),(0,0)), 'edge')
+        img = np.pad(I, ((0,0),(32,32),(0,0)), mode='edge')
     except:
         print('ERROR', image)
         continue
@@ -69,4 +74,8 @@ for i, image in enumerate(image_list):
     # img = cv2.resize(img, TARGET_SIZE)
     print(i, image)
 #        imsave(img, osp.join(base_dir,folder, image.split('.')[0]+'_resize.jpg'))
-    imsave(img, osp.join('/home/fashionteam/viton_512/train/', image))
+    try:
+        os.makedirs(osp.join(target_dir, image[:-4]))
+    except:
+        pass
+    imsave(img, osp.join(target_dir, image[:-4], 'image.png'))

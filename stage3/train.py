@@ -17,24 +17,27 @@ from tensorboardX import SummaryWriter
 import time
 
 sys.path.append('..')
+sys.path.append('/home/fashionteam/ClothFlow/stage2')
 from utils import *
+from Models.ClothNormalize_proj import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_MVC import *
+from dataloader_viton import *
 
 EPOCHS = 20
-PYRAMID_HEIGHT = 6
+PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 33
+    in_channels = 27
 else:
     stage = 'bottoms'
     in_channels = 9
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
-dataroot_mask = osp.join(PWD,"result/warped_mask",stage)
-dataroot_cloth = osp.join(PWD,"result/warped_cloth",stage)
+dataroot = '/home/fashionteam/viton_512'
+dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
+dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
+init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/'+stage
 exp = 'train/'+stage
@@ -44,7 +47,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=6)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -86,8 +89,13 @@ def train(opt):
     model.train()
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    train_dataset = CFDataset(opt, is_tops=IS_TOPS)
+    train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
+
+    theta_generator = ClothNormalizer(nc=2)
+    load_checkpoint(theta_generator, init_CN)
+    theta_generator.cuda()
+    theta_generator.eval()
 
     writer = SummaryWriter()
     rLoss = renderLoss()
@@ -103,45 +111,40 @@ def train(opt):
             answer = inputs['image'].cuda()
             off_cloth = inputs['off_cloth'].cuda()
             pants = inputs['crop_pants'].cuda()
-            cloth_mask = inputs['cloth_mask'].cuda()
+            con_cloth_mask = inputs['cloth_mask'].cuda()
+            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
             tar_mask = inputs['tar_mask'].cuda()
-            if IS_TOPS:
-                head = inputs['head'].cuda()
-                pose = inputs['pose'].cuda()
-            name = inputs['name']
-            if IS_TOPS:
-                result = model(con_cloth,off_cloth,pants,warped,cloth_mask,head,pose)
-            else:
-                result = model(con_cloth,off_cloth,warped)
+            head = inputs['head'].cuda()
+            pose = inputs['pose'].cuda()
 
-            if cnt % 50 == 0:
-                WriteImage(writer,"GT", answer, cnt)
-                #WriteImage(writer,"shape", shape, cnt)
-                WriteImage(writer,"warped", warped, cnt)
-                WriteImage(writer,"con_cloth", con_cloth, cnt)
-                WriteImage(writer,"off_cloth", off_cloth, cnt)
-                if IS_TOPS:
-                    WriteImage(writer,"Head", head, cnt)
-                else:
-                    WriteImage(writer,"pants", pants, cnt)
-                    WriteImage(writer,"cloth_mask", cloth_mask, cnt)
-                WriteImage(writer,"Result", result, cnt)
+            theta = theta_generator(con_cloth_mask, tar_cloth_mask)
+            grid = projection_grid(theta, con_cloth.shape)
+            cn_cloth = Ft.grid_sample(con_cloth, grid, padding_mode="border").detach()
+
+            result = model(off_cloth, pose, warped, head)
+
+            WriteImage(writer,"GT", answer, cnt)
+            #WriteImage(writer,"shape", shape, cnt)
+            WriteImage(writer,"warped", warped, cnt)
+            WriteImage(writer,"con_cloth", con_cloth, cnt)
+            WriteImage(writer,"off_cloth", off_cloth, cnt)
+            WriteImage(writer,"cn_cloth", cn_cloth, cnt)
+            WriteImage(writer,"Head", head, cnt)
+            WriteImage(writer,"Result", result, cnt)
+            WriteImage(writer,"pants", pants, cnt)
+            WriteImage(writer,"con_cloth_mask", con_cloth_mask, cnt)
+            WriteImage(writer,"tar_cloth_mask", tar_cloth_mask, cnt)
             
-            if IS_TOPS and epoch == 0:
+            if IS_TOPS and epoch <= 1:
                 optimizer.zero_grad()
                 loss, percept, style = rLoss(result,head)
                 loss.backward()
                 optimizer.step()
             else:	
                 optimizer.zero_grad()
-                loss, percept, style = rLoss(result,answer,1-tar_mask)
+                loss, percept, style = rLoss(result,answer)
                 loss.backward()
                 optimizer.step()
-
-            # if (step+1) % opt.display_count == 0:
-                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                #     epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
-                #     100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
 
             writer.add_scalar("loss/loss", loss, cnt)
             writer.add_scalar("loss/percept", percept, cnt)
@@ -153,7 +156,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
 
     opt = get_opt()
     train(opt)

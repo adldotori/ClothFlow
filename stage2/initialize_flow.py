@@ -15,10 +15,16 @@ import sys
 sys.path.append('..')
 from utils import *
 from Models.networks import *
-from dataloader_MVC import *
+from dataloader_viton import *
+sys.path.append('../stage1')
+from Models.net_canny import *
+from Models.loss_canny import *
+from Models.LossS3 import *
+from canny import network as CNet
+from canny import loss as CLosss
 
-EPOCHS = 1
-PYRAMID_HEIGHT = 6
+EPOCHS = 3
+PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
@@ -26,7 +32,7 @@ if IS_TOPS:
 else:
     stage = 'bottoms'
 nc = 2
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/init/'+stage
@@ -37,7 +43,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=6)
+    parser.add_argument('-b', '--batch-size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -76,8 +82,9 @@ def train(opt):
     A = torch.from_numpy(A)
     net = nn.functional.affine_grid(A,(opt.batch_size,2,INPUT_SIZE[1],INPUT_SIZE[0])).cuda()
 
-    model = FlowNet(PYRAMID_HEIGHT,4,1)
+    model = FlowNet(PYRAMID_HEIGHT,4,19)
     model = nn.DataParallel(model)
+    # load_checkpoint(model, '/home/fashionteam/ClothFlow/stage2/checkpoints/init/initial__0_00800.pth')
     model.cuda()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
@@ -88,6 +95,12 @@ def train(opt):
 
     writer = SummaryWriter("MSruns/initial")
 
+    canny = Canny()
+    canny.cuda()
+
+    rLoss = renderLoss()
+    cLoss = WeightedMSE()
+
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size) + step + 1
@@ -95,9 +108,9 @@ def train(opt):
 
             con_cloth = inputs['cloth'].cuda()
             con_cloth_mask = inputs['cloth_mask'].cuda()
-            tar_cloth = inputs['crop_cloth'].cuda()
+            tar_cloth = inputs['tar_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-            # pose = inputs['pose_png'].cuda()
+            pose = inputs['pose'].cuda()
 
             writer.add_image("con_cloth", con_cloth, cnt, dataformats="NCHW")
             writer.add_image("con_cloth_mask", con_cloth_mask, cnt, dataformats="NCHW")
@@ -105,7 +118,10 @@ def train(opt):
             writer.add_image("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
             # writer.add_image("pose", pose, cnt, dataformats="NCHW")
 
-            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
+            img1 = canny(con_cloth)
+            img2 = canny(tar_cloth)
+
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), torch.cat([pose,tar_cloth_mask],1))
 
             writer.add_image("warp_cloth", warp_cloth, cnt, dataformats="NCHW")
             writer.add_image("warp_mask", warp_mask, cnt, dataformats="NCHW")
@@ -135,7 +151,7 @@ def train(opt):
                save_image(con_cloth[0], os.path.join(_dir, "source.png"))
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'initial_%s_%d_%05d.pth' % (opt.init_name,epoch, (step+1))))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.stage, 'init_cany_%s_%d_%05d.pth' % (opt.init_name,epoch, (step+1))))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"

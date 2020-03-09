@@ -20,34 +20,34 @@ sys.path.append('..')
 from utils import *
 from Models.networks import *
 from Models.ClothNormalize_proj import *
-from dataloader_MVC import *
+from dataloader_viton import *
 
-PYRAMID_HEIGHT = 6
+PYRAMID_HEIGHT = 5
 IS_TOPS = True
 TENSORBOARD = False
 
 if IS_TOPS:
     stage = 'tops'
     nc = 2
-    checkpoint = 'stage2/checkpoints/tops/checkpoint_1.pth'
-    init_CN = 'backup/CN_top_.pth'
+    checkpoint = 'stage2/checkpoints/tops/checkpoint_3_2.pth'
+    init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
 else:
     stage = 'bottoms'
     nc = 2
     checkpoint = 'backup/stage2_bot_512.pth'
     init_CN = 'backup/CN_bot_.pth'
 
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage2/checkpoints/'+stage
-result_dir = '/home/fashionteam/ClothFlow/result/warped_cloth_3/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result_viton/warped_cloth/'+stage
 exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=4)
+    parser.add_argument('-b', '--batch-size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -109,7 +109,7 @@ def test(opt):
         name = inputs['name']
         con_cloth = inputs['cloth'].cuda()
         con_cloth_mask = inputs['cloth_mask'].cuda()
-        tar_cloth = inputs['crop_cloth'].cuda()
+        tar_cloth = inputs['tar_cloth'].cuda()
         tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
 
         theta = theta_generator(con_cloth_mask, tar_cloth_mask)

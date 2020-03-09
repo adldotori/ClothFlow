@@ -5,8 +5,9 @@ checkpoints/
 backup/
 npz/
 .ipynb_checkpoints/
-result/
-test/
+result*/
+test*/
 trained/
 neck/
 runstrain/
+a_*/

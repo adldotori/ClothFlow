@@ -344,7 +344,7 @@ class CFDataset(data.Dataset):
                 'pose': t_pose_map,
                 'name': pair,
                 'target_body_shape': t_body_parse,
-					 'shape': shape
+                'shape': shape
                 }
         else:
             result = {

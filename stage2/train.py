@@ -20,27 +20,26 @@ sys.path.append('..')
 from utils import *
 from Models.ClothNormalize_proj import *
 from Models.networks import *
-from dataloader_MVC import *
-
+from dataloader_viton import *
+sys.path.append('../stage1')
+from Models.net_canny import *
+from Models.loss_canny import *
 from canny import network as CNet
 from canny import loss as CLoss
 
-EPOCHS = 15
+EPOCHS = 40
 PYRAMID_HEIGHT = 5
 NUM_STAGE = '2'
-IS_TOPS = False
+IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
     nc = 2
-    checkpoint = 'backup/init_top_6.pth'
-    init_CN = 'backup/CN_top_.pth'
-else:
-    stage = 'bottoms'
-    nc = 2
-    checkpoint = 'backup/init_bot_6.pth'
-    init_CN = 'backup/CN_bot_.pth'
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+    checkpoint = None
+    checkpoint = 'stage2/checkpoints/init/init_cany__1_00623.pth'
+    checkpoint = 'stage2/checkpoints/tops/checkpoint_4_1.pth'
+    init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
+dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
@@ -69,7 +68,7 @@ def get_opt():
     parser.add_argument("--display_count", type=int, default = 1)
     parser.add_argument("--save_count", type=int, default = 100)
     parser.add_argument("--save_img_count", type=int, default = 50)
-    parser.add_argument("--loss_count", type=int, default = 10)
+    parser.add_argument("--loss_count", type=int, default = 4)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
     parser.add_argument("--smt_loss", type=float, default=2)
@@ -83,7 +82,7 @@ def get_opt():
     return opt
 
 def train(opt):
-    model = FlowNet(PYRAMID_HEIGHT,4,1)
+    model = FlowNet(PYRAMID_HEIGHT,4,19)
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
     model.cuda()
@@ -103,6 +102,8 @@ def train(opt):
 
     writer = SummaryWriter()
 
+    canny = Canny()
+    canny.cuda()
     # # write options in text file
     # if not os.path.exists("./options"): os.mkdir("./options")	
     # f = open("./options/{}.txt".format(opt.naming), "w")
@@ -112,6 +113,8 @@ def train(opt):
     #    f.write("{} --- {}\n".format(key, val))
     # f.close()
 
+    cLoss = WeightedMSE()
+
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
             cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
@@ -120,24 +123,27 @@ def train(opt):
 
             con_cloth = inputs['cloth'].cuda()
             con_cloth_mask = inputs['cloth_mask'].cuda()
-            tar_cloth = inputs['crop_cloth'].cuda()
+            tar_cloth = inputs['tar_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+            pose = inputs['pose'].cuda()
             # pose = inputs['pose_png'].cuda()
-            if IS_TOPS:
-                c_pose = inputs['c_pose'].cuda()
-                t_pose = inputs['t_pose'].cuda()
+            # if IS_TOPS:
+            #     c_pose = inputs['c_pose'].cuda()
+            #     t_pose = inputs['t_pose'].cuda()
 
                 # theta = theta_generator(c_pose,t_pose)
-                theta = theta_generator(con_cloth_mask, tar_cloth_mask)
-            else:
-                theta = theta_generator(con_cloth_mask, tar_cloth_mask)
+            theta = theta_generator(con_cloth_mask, tar_cloth_mask)
 
             grid1 = projection_grid(theta, con_cloth_mask.shape)
             grid2 = projection_grid(theta, con_cloth.shape)
             con_cloth_mask = Ft.grid_sample(con_cloth_mask , grid1).detach()
             con_cloth = Ft.grid_sample(con_cloth , grid2,padding_mode="border").detach()
-        
-            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
+            con_cloth = con_cloth * con_cloth_mask + (1 - con_cloth_mask)
+
+            # img1 = canny(con_cloth)
+            # img2 = canny(tar_cloth)
+				
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), torch.cat([pose,tar_cloth_mask],1))
             
             if (step+1) % opt.save_img_count == 0:
                 writer.add_images("con_cloth", con_cloth, cnt)
@@ -146,10 +152,16 @@ def train(opt):
                 writer.add_images("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
                 writer.add_images("warp_cloth", warp_cloth, cnt)
                 writer.add_images("warp_mask", warp_mask, cnt, dataformats="NCHW")
+                # writer.add_images("result_canny", img1, cnt)
+                # writer.add_images("GT_canny", img2, cnt)
 
             loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
             
+            # c_loss = cLoss.forward(warp_canny, img2) * 1000
+            # loss += c_loss
+            
             loss.backward()  
+
             if cnt % opt.loss_count == 0:
                 optimizer.step()
                 optimizer.zero_grad()
@@ -172,13 +184,14 @@ def train(opt):
                 writer.add_scalar("loss/roi_perc", roi_perc, cnt)
                 writer.add_scalar("loss/struct", struct, cnt)
                 writer.add_scalar("loss/smt", smt, cnt)
+                # writer.add_scalar("loss/canny", c_loss, cnt)
                 writer.add_scalar("loss/total", loss, cnt)
                 writer.close()
 
             if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_4_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2'
     opt = get_opt()
     train(opt)

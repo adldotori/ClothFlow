@@ -19,27 +19,34 @@ import time
 sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
-from dataloader_MVC import *
+from Models.LossS3 import *
+from Models.net_canny import *
+from Models.loss_canny import *
+from dataloader_viton import *
 
 PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 22
-    checkpoint = 'backup/stage1_top_512.pth'
+    in_channels = 20
+    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_canny_7000.pth'
 else:
     stage = 'bottoms'
     in_channels = 2
     checkpoint = 'backup/stage1_bot_512.pth'
-if REAL_TEST:
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    datalist = 'test_MVC'+stage+'_pair.txt'
-    result_dir = osp.join(PWD,'test/warped_mask/',stage)
-else:
-    dataroot = '/home/fashionteam/dataset_MVC_'+stage
-    datalist = 'train_MVC'+stage+'_pair.txt'
-    result_dir = osp.join(PWD,'result/warped_mask_6/',stage)
+# if REAL_TEST:
+#     dataroot = '/home/fashionteam/dataset_MVC_'+stage
+#     datalist = 'test_MVC'+stage+'_pair.txt'
+#     result_dir = osp.join(PWD,'test/warped_mask/',stage)
+# else:
+#     dataroot = '/home/fashionteam/dataset_MVC_'+stage
+#     datalist = 'train_MVC'+stage+'_pair.txt'
+#     result_dir = osp.join(PWD,'result/warped_mask_6/',stage)
+dataroot = '/home/fashionteam/viton_512/'
+datalist = 'train_MVC'+stage+'_pair.txt'
+runs = osp.join(PWD,'stage1','runs','test',stage)
+result_dir = osp.join(PWD,'result_viton/warped_mask_dropout/',stage)
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -73,6 +80,7 @@ def test(opt):
     load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.eval()
+    
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
 
@@ -91,20 +99,15 @@ def test(opt):
         con_cloth = inputs['cloth'].cuda()
         con_cloth_mask = inputs['cloth_mask'].cuda()
         name = inputs['name']
-        if IS_TOPS:
-            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-            pose = inputs['pose'].cuda()
-        else:
-            tar_cloth_mask = inputs['crop_pants_mask'].cuda() #answer   
-            tar_body_mask = inputs['target_body_shape'].cuda()
+        tar_body_mask = inputs['tar_body_mask'].cuda()
+        tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+        pose = inputs['pose'].cuda()
 
-        if IS_TOPS:
-            print(con_cloth.shape, con_cloth_mask.shape, pose.shape)
-            result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
-        else:
-            result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
+        result = model(pose, con_cloth_mask, tar_body_mask, IS_TOPS)
 
         loss = rLoss(result, tar_cloth_mask)
+
+        # result = (result > -0.9).type(torch.float32)
 
         if (step+1) % opt.display_count == 0:
             writer.add_images("GT", tar_cloth_mask, cnt)
@@ -122,7 +125,7 @@ def test(opt):
         save_images(result, name, opt.result_dir)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
 
     opt = get_opt()
     test(opt)

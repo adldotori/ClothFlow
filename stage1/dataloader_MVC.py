@@ -53,7 +53,6 @@ class CFDataset(data.Dataset):
         self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
-        self.result_dir = opt.result_dir
 
         # load data list
         pairs = []
@@ -122,7 +121,7 @@ class CFDataset(data.Dataset):
 
         c_seg = Image.open(path_c_seg).resize(INPUT_SIZE)
         c_parse_array = np.array(c_seg)
-
+        print(c_parse_array.shape)
         
         
         #c_parse_fla = c_parse_array.reshape(H*W, 1)
@@ -363,10 +362,7 @@ class CFDataLoader(object):
     def __init__(self, opt, dataset):
         super(CFDataLoader, self).__init__()
 
-        if opt.shuffle :
-            train_sampler = torch.utils.data.sampler.RandomSampler(dataset)
-        else:
-            train_sampler = None
+        train_sampler = None
 
         self.data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),

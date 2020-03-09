@@ -18,28 +18,36 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.networks_neck import *
+from Models.UNetS3_neck import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_neck import *
+from dataloader_viton import *
 
 
 EPOCHS = 15
 PYRAMID_HEIGHT = 5
 NUM_STAGE = str(1)
 
-if IS_TOPS:
-    stage = 'tops'
-    in_channels = 23
-else:
-    stage = 'bottoms'
-    in_channels = 2
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+# if IS_TOPS:
+#     stage = 'tops'
+#     in_channels = 23
+# else:
+#     stage = 'bottoms'
+#     in_channels = 2
+# dataroot = '/home/fashionteam/dataset_MVC_'+stage
+# datalist = 'train_MVC'+stage+'_pair.txt'
+# checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE, "neck", 'checkpoints',stage)
+# runs = osp.join(PWD,'stage'+NUM_STAGE,"neck", 'runs')
+# exp = osp.join('train',stage)
+
+stage = 'viton'
+in_channels = 23
+dataroot = '/home/fashionteam/viton_512'
 datalist = 'train_MVC'+stage+'_pair.txt'
-checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE, "neck", 'checkpoints',stage)
+checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE, 'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,"neck", 'runs')
-exp = osp.join('train',stage)
+exp = 'viton'
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -100,13 +108,9 @@ def train(opt):
             con_cloth = inputs['cloth'].cuda()
             con_cloth_mask = inputs["cloth_mask"].cuda()
             name = inputs['name']
-            if IS_TOPS:
-                tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-                pose = inputs['pose'].cuda()
-                shape = inputs['shape'].cuda()
-            else:
-                tar_cloth_mask = inputs['crop_pants_mask'].cuda()
-                tar_body_mask = inputs['target_body_shape'].cuda()
+            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+            pose = inputs['pose'].cuda()
+            shape = inputs['shape'].cuda()
             
             if IS_TOPS:
                 result = model(con_cloth, con_cloth_mask, pose, IS_TOPS, shape)

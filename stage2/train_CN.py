@@ -29,8 +29,6 @@ from Models.ClothNormalize import *
 EPOCHS = 30
 PYRAMID_HEIGHT = 5
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
-
 def get_A(bs, H, W):
     A = np.array([[[1,0,0],[0,1,0]]]).astype(np.float32)
     A = np.concatenate([A]*bs,0)

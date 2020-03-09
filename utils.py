@@ -19,12 +19,13 @@ def save_checkpoint(model, save_path):
     model.cuda()
 
 def load_checkpoint(model, checkpoint_path):
+    if checkpoint_path is None:
+        return
     real_path = os.path.join(PWD, checkpoint_path)
     if not os.path.exists(real_path):
-        print('[-] Checkpoint Load Error!')  
+        print('[-] Checkpoint Load Error!')
         exit() 
-    model.load_state_dict(torch.load(real_path))	
-    #model.to('cuda:1')
+    model.load_state_dict(torch.load(real_path))
     model.cuda()
 
 def get_A(bs, H, W):

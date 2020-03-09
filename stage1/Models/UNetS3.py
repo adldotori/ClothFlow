@@ -50,10 +50,10 @@ class DownConv(nn.Module):
         use_bias = norm_layer == nn.InstanceNorm2d
         self.conv1 = nn.Sequential(nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=use_bias),
                                    norm_layer(out_channels),
-                                   nn.LeakyReLU(0.2, True))
+                                   nn.LeakyReLU(0.2, True),)
         self.conv2 = nn.Sequential(nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=use_bias),
                                    norm_layer(out_channels),
-                                   nn.LeakyReLU(0.2, True))
+                                   nn.LeakyReLU(0.2, True),)
 
         if self.pooling:
             self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -86,12 +86,12 @@ class UpConv(nn.Module):
 
         self.upconv = upconv2x2(self.in_channels, self.out_channels,
                                 mode=self.up_mode)
-
+        
         if self.merge_mode == 'concat':
             self.conv1 = nn.Sequential(
                 nn.Conv2d(2 * self.out_channels, self.out_channels, kernel_size=3, padding=1, stride=1),
                 nn.InstanceNorm2d(self.out_channels),
-                nn.LeakyReLU(0.2, True)
+                nn.LeakyReLU(0.2, True),
             )
         else:
             # num of input channels to conv2 is same
@@ -99,7 +99,7 @@ class UpConv(nn.Module):
         self.conv2 = nn.Sequential(
                 nn.Conv2d(self.out_channels, self.out_channels,3, 1,1),
                 nn.InstanceNorm2d(self.out_channels),
-                nn.LeakyReLU(0.2, True)
+                nn.LeakyReLU(0.2, True),
             )
 
     def forward(self, from_A, from_up):
@@ -190,14 +190,14 @@ class UNet(nn.Module):
 
         self.bottle_0 = nn.Sequential(nn.Conv2d(32 * 2**depth,32 * 2**depth,3,1,1),
                                     nn.InstanceNorm2d(32 * 2**depth),
-                                    nn.LeakyReLU(0.2, True))
+                                    nn.LeakyReLU(0.2, True),)
         self.bottle_1 = nn.Sequential(nn.Conv2d(32 * 2**depth,32 * 2**depth,3, dilation=2, padding=2, bias=False),
                                     nn.InstanceNorm2d(32 * 2**depth),
-                                    nn.LeakyReLU(0.2, True)
+                                    nn.LeakyReLU(0.2, True),
                                     )
         self.bottle_2 = nn.Sequential(nn.Conv2d(32 * 2**depth, 32 * 2**depth, 3, dilation=4, padding=4, bias=False),
-                                      nn.InstanceNorm2d(32 * 2**depth),
-                                      nn.LeakyReLU(0.2, True)
+                                    nn.InstanceNorm2d(32 * 2**depth),
+                                    nn.LeakyReLU(0.2, True),
                                       )
 
         for i in range(depth):
@@ -244,10 +244,10 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, cloth, cloth_mask, target_pose, is_tops):
+    def forward(self, a,b,c, is_tops):
         encoder_outs = []
         if is_tops:
-            x = torch.cat((cloth, cloth_mask, target_pose), 1)
+            x = torch.cat((a,b,c), 1)
         else:
             x = torch.cat((cloth, cloth_mask), 1)
         # encoder pathway, save outputs for merging

@@ -22,12 +22,13 @@ from Models.UNetS3 import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_MVC import *
+from dataloader_viton import *
 
 
-EPOCHS = 15
+EPOCHS = 30
 PYRAMID_HEIGHT = 5
-NUM_STAGE = 1
+NUM_STAGE = str(1)
+IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
@@ -35,21 +36,20 @@ if IS_TOPS:
 else:
     stage = 'bottoms'
     in_channels = 2
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
+dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
-runs = osp.join(PWD,'stage'+NUM_STAGE,'runs')
-exp = osp.join('train',stage)
+runs = osp.join(PWD,'stage'+NUM_STAGE,'runs','train',stage)
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=7)
     
     parser.add_argument("--dataroot", default = dataroot)
-    parser.add_argument("--datamode", default = "test")
+    parser.add_argument("--datamode", default = "train")
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
@@ -61,7 +61,7 @@ def get_opt():
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 500)
     parser.add_argument("--save_count_npz", type=int, default = 50)
-    parser.add_argument("--exp", type=str, default = exp)
+    parser.add_argument("--runs", type=str, default=runs)
     
 
     opt = parser.parse_args()
@@ -70,6 +70,7 @@ def get_opt():
 def train(opt):
     model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
     model = nn.DataParallel(model)
+    # load_checkpoint(model, 'stage1/checkpoints/tops/checkpoint_arm_1500.pth')
     model.cuda()
     model.train()
 
@@ -77,13 +78,13 @@ def train(opt):
     canny.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-    train_dataset = CFDataset(opt, is_tops=IS_TOPS)
+    train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
 
-    if os.path.isdir(runs):
-        os.system('rm -r '+runs+opt.exp)
-    os.makedirs(runs+opt.exp)
-    writer = SummaryWriter(runs+opt.exp)
+    if os.path.isdir(opt.runs):
+        os.system('rm -r '+opt.runs)
+    os.makedirs(opt.runs)
+    writer = SummaryWriter(opt.runs)
 
     rLoss = renderLoss()
     cLoss = WeightedMSE()
@@ -97,22 +98,19 @@ def train(opt):
             con_cloth = inputs['cloth'].cuda()
             con_cloth_mask = inputs["cloth_mask"].cuda()
             name = inputs['name']
-            if IS_TOPS:
-                tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-                pose = inputs['pose'].cuda()
-            else:
-                tar_cloth_mask = inputs['crop_pants_mask'].cuda()
-                tar_body_mask = inputs['target_body_shape'].cuda()
-            
-            if IS_TOPS:
-                result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
-            else:
-                result = model(con_cloth_mask, tar_body_mask, None, IS_TOPS)
-            
+            tar_cloth = inputs['crop_cloth'].cuda()
+            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+            tar_body_mask = inputs['tar_body_mask'].cuda()
+            pose = inputs['pose'].cuda()
+            arms_mask = inputs['arms_mask'].cuda()
+
+            result = model(pose, con_cloth_mask,tar_body_mask,IS_TOPS)
+            # result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
+
             optimizer.zero_grad()
             
             img1 = canny(result)
-            img2 = canny(tar_cloth_mask)
+            img2 = canny(tar_cloth)
 				
             writer.add_images("result_canny", img1, cnt)
             writer.add_images("GT_canny", img2, cnt)
@@ -124,16 +122,13 @@ def train(opt):
             # else:
             #     style = style / 1000	
             #     mse = mse * 100
-                
-            r_loss = rLoss(result, tar_cloth_mask) 
+            r_loss = rLoss(result, tar_cloth_mask)
+
             # c_loss = style + mse
             # loss = c_loss + r_loss
 
             loss = r_loss
-            if epoch >= 4:
-                c_loss = cLoss.forward(img1, img2)
-                loss += c_loss
-            
+
             loss.backward()
             optimizer.step()
 
@@ -141,13 +136,10 @@ def train(opt):
                 writer.add_images("cloth", con_cloth, cnt)
                 writer.add_images("mask", con_cloth_mask, cnt)
                 writer.add_images("GT", tar_cloth_mask, cnt)
-                if not IS_TOPS:
-                    writer.add_images("tar_body", tar_body_mask, cnt)
+                writer.add_images('tar_cloth', tar_cloth, cnt)
+                writer.add_images("tar_body", tar_body_mask, cnt)
                 writer.add_images("Result", result, cnt)
                 writer.add_scalar("loss/loss", loss, cnt)
-                # writer.add_scalar("loss/c_loss/style", style, cnt)
-                # writer.add_scalar("loss/c_loss/mse", mse, cnt)
-                # writer.add_scalar("loss/c_loss/total", c_loss, cnt)
                 writer.add_scalar("loss/r_loss", r_loss, cnt)
                 writer.close()
 
@@ -157,8 +149,8 @@ def train(opt):
             #         100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
 
 
-            if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, '%d_%05d.pth' % (epoch, step+1)))
+            if cnt % opt.save_count == 0:
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_canny_%d.pth' % cnt))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
