@@ -24,8 +24,9 @@ import pickle
 import neckmake
 import torch.nn.functional as Ftnl
 import cv2
+import matplotlib.pyplot as plt
 
-def imsave(result,path):
+def imsave(result,path, save=True):
     img = (result[0].clone()+1)*0.5 * 255
     if img.shape[0] == 1:
         img = img[0,:,:]
@@ -33,9 +34,12 @@ def imsave(result,path):
         img = img.transpose(0,1).transpose(1,2)
     img = img.cpu().clamp(0,255)
     img = img.detach().numpy().astype('uint8')
-    Image.fromarray(img).save(path)
+    if save:
+        Image.fromarray(img).save(path)
+    else:
+        return Image.fromarray(img)
 
-def masksave(result, path):
+def masksave(result, path, save=True):
 	img = (result[0].clone()) * 255
 	if img.shape[0] == 1:
 		img = img[0, :, :]
@@ -43,7 +47,10 @@ def masksave(result, path):
 		img = img.transpose(0, 1).transpose(1, 2)
 	img = img.cpu()#.clamp(0, 255)
 	img = img.detach().numpy().astype('uint8')
-	Image.fromarray(img).save(path)
+	if save:
+		Image.fromarray(img).save(path)
+	else:
+		return Image.fromarray(img)
 
 
 def get_opt():  
@@ -56,7 +63,7 @@ def get_opt():
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
     parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_1107.pth")
     parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_3_2.pth")
-    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_2.pth")
+    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_0.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth")
     parser.add_argument("--result", default = "test_uw")
     parser.add_argument("--height", default = 512)
@@ -65,16 +72,16 @@ def get_opt():
     opt = parser.parse_args()
     return opt
 
-def load_inputs(opt,name):
+def load_inputs(opt,name, num):
     H = opt.height
     W = opt.width
     transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
 
     data_path = osp.join(opt.dataroot,name)
-    path_cloth = osp.join(data_path,"cloth-1.jpg")
+    path_cloth = osp.join(data_path,"cloth-"+str(num)+".jpg")
     path_image = osp.join(data_path,"image.png")
-    path_cloth_mask = osp.join(data_path,"cloth_mask-1.jpg")
+    path_cloth_mask = osp.join(data_path,"cloth_mask-"+str(num)+".jpg")
     path_segment = osp.join(data_path,"segment.png")
     path_pose_pkl = osp.join(data_path,"pose.pkl")
     path_mask = osp.join(data_path,"image_mask.jpg")
@@ -181,15 +188,11 @@ def load_inputs(opt,name):
         'crop_pants': crop_pants,
         'crop_arms': crop_arms,
         'mask': mask,
-        'arms': arms
+
     }
     return results
-    
 
-
-
-def main():
-    opt = get_opt()
+def main(opt, name, num):
     PYRAMID_HEIGHT = opt.PYRAMID_HEIGHT
 
     model1 = M1.UNet(opt,23,5)
@@ -197,13 +200,11 @@ def main():
     #model1.to(device)
     model1 = nn.DataParallel(model1)
     model1.eval()
-    model2 = M2.FlowNet(5,4,1)
-    model2.eval()
+    model2 = M2.FlowNet(PYRAMID_HEIGHT,4,1)
     #device = torch.device("cuda:2")
     #model2.to(device)
     model2 = nn.DataParallel(model2)
     model3 = M3.UNet(opt,27,5)
-    model3.eval()
     #device = torch.device("cuda:2")
     #model3.to(device)
     model3 = nn.DataParallel(model3)
@@ -218,96 +219,115 @@ def main():
     set_requires_grad(model2,False)
     set_requires_grad(model3,False)
     set_requires_grad(model_CN,False)
-
-    if opt.mode == "all":
-        names = os.listdir(opt.dataroot)
-    elif opt.mode == "one":
-        names = [opt.name]
-    else:
-        print("--mode should be all or one")
-        assert(1==0)
     
-    for name in names:
-        inputs = load_inputs(opt,name)
-        cloth = batch_cuda(inputs["cloth"])
-        cloth_mask = batch_cuda(inputs["cloth_mask"])
-        target_mask_real = batch_cuda(inputs["crop_cloth_mask"])
-        target_pose = batch_cuda(inputs["pose"])
-        mask = batch_cuda(inputs['mask'])
-        answer = batch_cuda(inputs["image"])
-        arms = batch_cuda(inputs['arms'])
-        # shape = batch_cuda(inputs["shape"])
+    inputs = load_inputs(opt, name, num)
+    ori_cloth = batch_cuda(inputs["cloth"])
+    cloth_mask = batch_cuda(inputs["cloth_mask"])
+    target_mask_real = batch_cuda(inputs["crop_cloth_mask"])
+    target_pose = batch_cuda(inputs["pose"])
+    mask = batch_cuda(inputs['mask'])
+    answer = batch_cuda(inputs["image"])
+    parse = batch_cuda(inputs['parse'])
 
-        # mask = mask.cpu().numpy()
-        # mask = mask.squeeze()
+    # shape = batch_cuda(inputs["shape"])
+    # target_mask = model1(target_pose, cloth_mask, mask,  opt.is_top)
+    target_mask = model1(ori_cloth, cloth_mask, target_pose, mask, opt.is_top)
+    target_mask = (target_mask > -0.9).type(torch.float32)
+    
+    target_mask = target_mask.cpu().numpy()
+    target_mask = target_mask.squeeze()
 
-        # kernel = np.ones((3,3), np.uint8)
-        # mask = cv2.erode(mask, kernel, iterations=1)
-        # mask = cv2.dilate(mask, kernel, iterations=2)
-        # mask = cv2.dilate(mask, kernel, iterations=2)
-        
-        # mask = torch.from_numpy(mask).cuda()
-        # mask = mask.unsqueeze_(0)
-        # mask = mask.unsqueeze_(0)
+    kernel = np.ones((3,3), np.uint8)
+    target_mask = cv2.erode(target_mask, kernel, iterations=1)
+    target_mask = cv2.dilate(target_mask, kernel, iterations=2)
+    target_mask = cv2.dilate(target_mask, kernel, iterations=2)
+    
+    target_mask = torch.from_numpy(target_mask).cuda()
+    target_mask = target_mask.unsqueeze_(0)
+    target_mask = target_mask.unsqueeze_(0)
 
-        # target_mask = model1(target_pose, cloth_mask, mask,  opt.is_top)
-        target_mask = model1(cloth, cloth_mask, target_pose, mask, opt.is_top)
-        target_mask = (target_mask > -0.9).type(torch.float32)
-        
-        target_mask = target_mask.cpu().numpy()
-        target_mask = target_mask.squeeze()
+    # target_mask = target_mask * mask
+    if not os.path.exists(osp.join(opt.result, name)): os.makedirs(osp.join(opt.result,name))
+    imsave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
+    imsave(ori_cloth, osp.join(opt.result, name, "cloth.jpg"))
 
-        kernel = np.ones((3,3), np.uint8)
-        target_mask = cv2.erode(target_mask, kernel, iterations=2)
-        target_mask = cv2.dilate(target_mask, kernel, iterations=2)
-        
-        target_mask = torch.from_numpy(target_mask).cuda()
-        target_mask = target_mask.unsqueeze_(0)
-        target_mask = target_mask.unsqueeze_(0)
+    # cloth_mask = (cloth_mask > 0).type(torch.float32)
+    masksave(cloth_mask, osp.join(opt.result, name, "cloth_mask.jpg"))
+    
+    masksave(target_mask_real.view(target_mask_real.shape[0], 1, target_mask_real.shape[1], target_mask_real.shape[2]), osp.join(opt.result, name, "target_mask.jpg"))
 
-        # target_mask = target_mask * mask
-        if not os.path.exists(osp.join(opt.result, name)): os.makedirs(osp.join(opt.result,name))
-        imsave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
-        imsave(cloth, osp.join(opt.result, name, "cloth.jpg"))
+    params = model_CN(cloth_mask,target_mask)
+    grid1 = projection.projection_grid(params,cloth_mask.shape)
+    grid2 = projection.projection_grid(params,ori_cloth.shape)
+    cloth = Ftnl.grid_sample(ori_cloth , grid2,padding_mode="border").detach()
 
-        # cloth_mask = (cloth_mask > 0).type(torch.float32)
-        masksave(cloth_mask, osp.join(opt.result, name, "cloth_mask.jpg"))
-        
-        masksave(target_mask_real.view(target_mask_real.shape[0], 1, target_mask_real.shape[1], target_mask_real.shape[2]), osp.join(opt.result, name, "target_mask.jpg"))
+    imsave(cloth,osp.join(opt.result,name,"CN.jpg"))
+    
+    [F, warp_cloth, warp_mask] = model2(torch.cat([cloth, cloth_mask], 1), target_mask)
 
-        params = model_CN(cloth_mask,target_mask)
-        grid1 = projection.projection_grid(params,cloth_mask.shape)
-        grid2 = projection.projection_grid(params,cloth.shape)
-        cloth = Ftnl.grid_sample(cloth , grid2,padding_mode="border").detach()
+    # warp_cloth = warp_cloth * target_mask
+    imsave(warp_cloth,osp.join(opt.result,name,"stage2.jpg"))
+    
+    target_mask = target_mask.to(target_mask_real.device)
+    masking = (target_mask + target_mask_real).clamp(0,1)
+    off_cloth = (answer * (1-masking) + masking).detach()
+    
+    imsave(off_cloth, osp.join(opt.result,name,"off_cloth.jpg"))
+    imsave(answer, osp.join(opt.result, name, "image.jpg"))
+    masksave(mask, osp.join(opt.result, name, "body_mask.jpg"))
+    
+    warped = warp_cloth
+    pose = batch_cuda(inputs['pose'])
+    head = batch_cuda(inputs['head'])
+    pants = batch_cuda(inputs['crop_pants'])
 
-        imsave(cloth,osp.join(opt.result,name,"CN.jpg"))
-        
-        [F, warp_cloth, warp_mask] = model2(torch.cat([cloth, cloth_mask], 1), target_mask)
-        
-        # warp_cloth = warp_cloth * target_mask
-        imsave(warp_cloth,osp.join(opt.result,name,"stage2.jpg"))
-        
-        target_mask = target_mask.to(target_mask_real.device)
-        masking = (target_mask + target_mask_real + arms).clamp(0,1)
-        off_cloth = (answer * (1-masking) + masking).detach()
-        
-        imsave(off_cloth,osp.join(opt.result,name,"off_cloth.jpg"))
-        imsave(answer, osp.join(opt.result, name, "image.jpg"))
-        masksave(mask, osp.join(opt.result, name, "body_mask.jpg"))
-        
-        warped = warp_cloth
-        pose = batch_cuda(inputs['pose'])
-        head = batch_cuda(inputs['head'])
-        pants = batch_cuda(inputs['crop_pants'])
+    imsave(head, osp.join(opt.result, name,"head.jpg"))
+    imsave(pants, osp.join(opt.result, name, "pants.jpg"))
 
-        imsave(head, osp.join(opt.result, name,"head.jpg"))
-        imsave(pants, osp.join(opt.result, name, "pants.jpg"))
+    result = model3(pose,warped,off_cloth,head)
 
-        result = model3(pose,warped,off_cloth,head)
+    imsave(result, osp.join(opt.result,name,"result.jpg"))
 
-        imsave(result, osp.join(opt.result,name,"result.jpg"))
+    return imsave(answer, None, False), masksave(cloth_mask, None, False), masksave(target_mask, None, False), imsave(ori_cloth, None, False), imsave(warp_cloth, None, False), imsave(result, None, False)
+
+
+def draw_chart():
+    opt = get_opt()
+    names = os.listdir(opt.dataroot)
+
+    # names = [i for i in names if i[0] is '0']
+
+    columns = 36
+    rows = 4
+
+    h = (columns + 1) * 100
+    w = (rows + 1) * 100
+    stage1 = Image.new("RGB", (h,w), (256,256,256))
+    stage2 = Image.new("RGB", (h,w), (256,256,256))
+    stage3 = Image.new("RGB", (h,w), (256,256,256))
+    for i in range(columns):
+        for j in range(rows):
+            answer, target_mask, img, cloth, warp, result = main(opt, names[i], j+1)
+            answer = answer.resize((int(h/(columns+1)), int(w/(rows+1))))
+            target_mask = target_mask.resize((int(h/(columns+1)), int(w/(rows+1))))
+            img = img.resize((int(h/(columns+1)), int(w/(rows+1))))
+            cloth = cloth.resize((int(h/(columns+1)), int(w/(rows+1))))
+            warp = warp.resize((int(h/(columns+1)), int(w/(rows+1))))
+            result = result.resize((int(h/(columns+1)), int(w/(rows+1))))
+            stage1.paste(answer, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (0))))
+            stage1.paste(target_mask, (int((h/(columns+1)) * (0)), int((w/(rows+1)) * (j+1))))
+            stage1.paste(img, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (j+1))))
+            stage2.paste(answer, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (0))))
+            stage2.paste(cloth, (int((h/(columns+1)) * (0)), int((w/(rows+1)) * (j+1))))
+            stage2.paste(warp, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (j+1))))
+            stage3.paste(answer, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (0))))
+            stage3.paste(cloth, (int((h/(columns+1)) * (0)), int((w/(rows+1)) * (j+1))))
+            stage3.paste(result, (int((h/(columns+1)) * (i+1)), int((w/(rows+1)) * (j+1))))
+
+    stage1.save('stage1_result.png')
+    stage2.save('stage2_result.png')
+    stage3.save('stage3_result.png')
 
 if __name__ == "__main__":
     os.environ['CUDA_VISIBLE_DEVICES'] = "3"
-    #torch.cuda.set_device(2)
-    main()
+    draw_chart()

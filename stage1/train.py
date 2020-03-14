@@ -25,14 +25,14 @@ from Models.loss_canny import *
 from dataloader_viton import *
 
 
-EPOCHS = 30
-PYRAMID_HEIGHT = 5
+EPOCHS = 10
+PYRAMID_HEIGHT = 6
 NUM_STAGE = str(1)
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 22
+    in_channels = 23
 else:
     stage = 'bottoms'
     in_channels = 2
@@ -46,7 +46,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=7)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -55,7 +55,7 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
-    parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument("--display_count", type=int, default = 20)
@@ -104,7 +104,7 @@ def train(opt):
             pose = inputs['pose'].cuda()
             arms_mask = inputs['arms_mask'].cuda()
 
-            result = model(pose, con_cloth_mask,tar_body_mask,IS_TOPS)
+            result = model(pose, con_cloth, con_cloth_mask,tar_body_mask,IS_TOPS)
             # result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
 
             optimizer.zero_grad()
@@ -150,10 +150,10 @@ def train(opt):
 
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_canny_%d.pth' % cnt))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_6_%d.pth' % cnt))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "2,3"
 
     opt = get_opt()
     train(opt)

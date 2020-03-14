@@ -4,7 +4,7 @@ import numpy as np
 import os.path as osp
 import cv2
 
-base_dir = '/home/fashionteam/underwear_512'
+base_dir = '/home/fashionteam/underwear_512/'
 
 for folder in os.listdir(base_dir):
     image = np.array(Image.open(osp.join(base_dir, folder, 'crop.png')))

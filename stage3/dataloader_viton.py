@@ -91,6 +91,7 @@ class CFDataset(data.Dataset):
 
         # segment processing
         seg = Image.open(path_seg)
+        parse = self.transform_1ch(seg)
         parse_array = np.array(seg)
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
@@ -112,14 +113,7 @@ class CFDataset(data.Dataset):
         warped_mask = torch.from_numpy(warped_mask)
         arms = torch.from_numpy(arms)
         pants = torch.from_numpy(pants)
-        
-        crop_head = image * head + (1 - head)
-        crop_cloth = image * cloth + (1 - cloth)
-        off_cloth = image * (1-warped_mask) + warped_mask
-        crop_arms = image * arms + (1-arms)
-        crop_pants = (image * pants + (1-pants)) * (1 - warped_mask) + warped_mask
-
-        cloth.unsqueeze_(0)
+        head = torch.from_numpy(head)
 
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)
@@ -128,6 +122,19 @@ class CFDataset(data.Dataset):
         shape = neckmake.fullmake(shape,pose_data)
         shape = torch.from_numpy(shape)
         shape.unsqueeze_(0)
+
+        # rgb_array = np.full((3,INPUT_SIZE[0],INPUT_SIZE[1]), np.random.rand(3))
+        # rgb_array = rgb_array.astype(np.float32)
+        # rand = torch.from_numpy(rgb_array)
+        image = image * shape + (1 - shape) * 0
+        
+        crop_head = image * head + (1 - head)
+        crop_cloth = image * cloth + (1 - cloth)
+        off_cloth = image * (1-cloth - arms) + cloth + arms
+        crop_arms = image * arms + (1-arms)
+        crop_pants = (image * pants + (1-pants)) * (1 - warped_mask) + warped_mask
+        cloth.unsqueeze_(0)
+        head.unsqueeze_(0)
 
         point_num = 18
         pose_map = torch.zeros(point_num, H, W)
@@ -157,15 +164,15 @@ class CFDataset(data.Dataset):
             'head': crop_head,# cropped head from source image
             'pose': pose_map,#pose map
             'tar_mask': shape,
-            'upper_mask': cloth,# cropped cloth mask
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
             'name' : name,
             'warped' : warped,
             'off_cloth': off_cloth,#source image - cloth
-            # 'parse' : parse,
             'pants_mask': pants,
             'crop_pants': crop_pants,
+            'parse': parse,
+            'head_mask': head,
             }
         return result
 

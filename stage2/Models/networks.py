@@ -12,7 +12,7 @@ from torchvision import models, transforms
 from Models.loss import *
 
 DEBUG = False
-MAX_CH = 512
+MAX_CH = 256
 SMOOTH = False 
 
 """

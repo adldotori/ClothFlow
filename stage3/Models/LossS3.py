@@ -126,6 +126,6 @@ class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and t
         loss = self.vgg.get_loss()
         percept = self.vgg.get_percept()
         style = self.vgg.get_style()
-        return percept, percept, style
+        return loss, percept, style
 
 

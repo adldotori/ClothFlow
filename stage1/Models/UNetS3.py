@@ -244,12 +244,13 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, a,b,c, is_tops):
+    def forward(self, a,b,c, d=None, is_tops=True):
         encoder_outs = []
-        if is_tops:
+        try:
+            len(d)
+            x = torch.cat((a,b,c,d), 1)
+        except:
             x = torch.cat((a,b,c), 1)
-        else:
-            x = torch.cat((cloth, cloth_mask), 1)
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)

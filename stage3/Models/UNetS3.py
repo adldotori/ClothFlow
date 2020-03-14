@@ -188,15 +188,15 @@ class UNet(nn.Module):
             self.cloth_warp.append(down_conv)
         """
 
-        self.bottle_0 = nn.Sequential(nn.Conv2d(1024,1024,3,1,1),
-                                    nn.InstanceNorm2d(1024),
+        self.bottle_0 = nn.Sequential(nn.Conv2d(start_filts * 2**(depth-1),start_filts * 2**(depth-1),3,1,1),
+                                    nn.InstanceNorm2d(start_filts * 2**(depth-1)),
                                     nn.LeakyReLU(0.2, True))
-        self.bottle_1 = nn.Sequential(nn.Conv2d(1024,1024,3, dilation=2, padding=2, bias=False),
-                                    nn.InstanceNorm2d(1024),
+        self.bottle_1 = nn.Sequential(nn.Conv2d(start_filts * 2**(depth-1),start_filts * 2**(depth-1),3, dilation=2, padding=2, bias=False),
+                                    nn.InstanceNorm2d(start_filts * 2**(depth-1)),
                                     nn.LeakyReLU(0.2, True)
                                     )
-        self.bottle_2 = nn.Sequential(nn.Conv2d(1024, 1024, 3, dilation=4, padding=4, bias=False),
-                                      nn.InstanceNorm2d(1024),
+        self.bottle_2 = nn.Sequential(nn.Conv2d(start_filts * 2**(depth-1), start_filts * 2**(depth-1), 3, dilation=4, padding=4, bias=False),
+                                      nn.InstanceNorm2d(start_filts * 2**(depth-1)),
                                       nn.LeakyReLU(0.2, True)
                                       )
 
@@ -243,10 +243,9 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, off_cloth, pose, warped, head):
+    def forward(self, target_pose,warped_cloth,off_cloth, head):
         encoder_outs = []
-        x = torch.cat((off_cloth,pose,warped,head), 1)
-
+        x = torch.cat((target_pose,warped_cloth,off_cloth, head), 1)
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)

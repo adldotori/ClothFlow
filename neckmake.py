@@ -126,4 +126,4 @@ def setup(to_path,datamode,base_dir="/home/fashionteam/viton_512/",namelist="vit
         Image.fromarray(result).save(osp.join(to_path,datamode,'image-mask',parse_name))
 
 if __name__ == '__main__':
-    setup("/home/fashionteam/viton_512/","train")
+    setup("/home/fashionteam/viton_512/","test")

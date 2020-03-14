@@ -24,15 +24,16 @@ from Models.UNetS3 import *
 from Models.LossS3 import *
 from dataloader_viton import *
 
-EPOCHS = 20
+EPOCHS = 400
 PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
     in_channels = 27
+    checkpoint = 'stage3/checkpoints/train/tops/checkpoint_0.pth'
 else:
-    stage = 'bottoms'
+    stage = 'bottomqs'
     in_channels = 9
 dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
@@ -40,6 +41,7 @@ dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
 init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/'+stage
+
 exp = 'train/'+stage
 
 def get_opt():
@@ -59,11 +61,11 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
-    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default='/home/fashionteam/ClothFlow/stage3/checkpoints', help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
-    parser.add_argument('--checkpoint', type=str, default='', help='model checkpoint for initialization')
+    parser.add_argument('--checkpoint', type=str, default=checkpoint, help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 500)
     parser.add_argument("--save_count_npz", type=int, default = 50)
@@ -85,6 +87,7 @@ def get_opt():
 def train(opt):
     model = UNet(opt, in_channels, PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
+    # load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.train()
     
@@ -116,33 +119,31 @@ def train(opt):
             tar_mask = inputs['tar_mask'].cuda()
             head = inputs['head'].cuda()
             pose = inputs['pose'].cuda()
+            parse = inputs['parse'].cuda()
+            head_mask = inputs['head_mask'].cuda()
 
-            theta = theta_generator(con_cloth_mask, tar_cloth_mask)
-            grid = projection_grid(theta, con_cloth.shape)
-            cn_cloth = Ft.grid_sample(con_cloth, grid, padding_mode="border").detach()
+            result = model(pose, warped, off_cloth, head)
 
-            result = model(off_cloth, pose, warped, head)
-
+            result = result * (shape)
             WriteImage(writer,"GT", answer, cnt)
             #WriteImage(writer,"shape", shape, cnt)
             WriteImage(writer,"warped", warped, cnt)
             WriteImage(writer,"con_cloth", con_cloth, cnt)
             WriteImage(writer,"off_cloth", off_cloth, cnt)
-            WriteImage(writer,"cn_cloth", cn_cloth, cnt)
             WriteImage(writer,"Head", head, cnt)
             WriteImage(writer,"Result", result, cnt)
             WriteImage(writer,"pants", pants, cnt)
             WriteImage(writer,"con_cloth_mask", con_cloth_mask, cnt)
             WriteImage(writer,"tar_cloth_mask", tar_cloth_mask, cnt)
-            
+            WriteImage(writer,"head_res", result * head_mask + (1 - head_mask), cnt)
             if IS_TOPS and epoch <= 1:
                 optimizer.zero_grad()
-                loss, percept, style = rLoss(result,head)
+                loss, percept, style = rLoss(result * head_mask + (1 - head_mask),head)
                 loss.backward()
                 optimizer.step()
             else:	
                 optimizer.zero_grad()
-                loss, percept, style = rLoss(result,answer)
+                loss, percept, style = rLoss(result * (tar_mask + tar_cloth_mask) + (1 - tar_mask - tar_cloth_mask),answer)
                 loss.backward()
                 optimizer.step()
 
@@ -156,7 +157,7 @@ def train(opt):
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '2,3'
 
     opt = get_opt()
     train(opt)
