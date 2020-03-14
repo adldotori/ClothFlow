@@ -38,7 +38,7 @@ if IS_TOPS:
     checkpoint = None
     # checkpoint = 'stage2/checkpoints/init/init_cany__0_00050.pth'
     # checkpoint = 'stage2/checkpoints/tops/checkpoint_4iit_1.pth'
-    init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
+    init_CN = 'backup/CN_512.pth'
 dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
