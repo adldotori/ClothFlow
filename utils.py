@@ -68,8 +68,8 @@ def save_images(img_tensors, img_names, save_dir):
         # image.show()
         image.save(os.path.join(save_dir, img_name + '.jpg'))
 
-def WriteImage(writer,name,data,cnt,dataformats=None):
-    if not (cnt % 50 == 0):
+def WriteImage(writer,name,data,cnt,stride=50,dataformats=None):
+    if not (cnt % stride == 0):
         return None
     
     data_ = (data.clone() + 1)*0.5

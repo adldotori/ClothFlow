@@ -37,10 +37,10 @@ if IS_TOPS:
     nc = 2
     checkpoint = None
     # checkpoint = 'stage2/checkpoints/init/init_cany__0_00050.pth'
-    # checkpoint = 'stage2/checkpoints/tops/checkpoint_4iit_1.pth'
+    checkpoint = 'stage2/checkpoints/tops/checkpoint_tmp_1.pth'
     init_CN = 'backup/CN_512.pth'
 dataroot = '/home/fashionteam/viton_512'
-dataroot_mask = '/home/fashionteam/ClothFlow/result/warped_mask/'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result_viton/warped_mask/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,'runs')
@@ -60,7 +60,7 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--grid_size", type=int, default = 10)
-    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.00003, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
@@ -71,9 +71,9 @@ def get_opt():
     parser.add_argument("--loss_count", type=int, default = 6)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
-    parser.add_argument("--smt_loss", type=float, default=0.2)
-    parser.add_argument("--perc_loss", type=float, default=0.1)
-    parser.add_argument("--struct_loss", type=float, default=1)
+    parser.add_argument("--smt_loss", type=float, default=2)
+    parser.add_argument("--perc_loss", type=float, default=1)
+    parser.add_argument("--struct_loss", type=float, default=10)
     parser.add_argument("--stat_loss", type=float, default=-1)
     parser.add_argument("--abs_loss", type=float, default=0)
     parser.add_argument("--save_dir", type=str, default="npz")
@@ -82,7 +82,7 @@ def get_opt():
     return opt
 
 def train(opt):
-    model = FlowNet(PYRAMID_HEIGHT,4,19)
+    model = FlowNet(PYRAMID_HEIGHT,4,1)
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
     model.cuda()
@@ -111,7 +111,7 @@ def train(opt):
     canny.cuda()
 
     init_loss = nn.L1Loss()
-    limit = 1
+    limit = 0
     # # write options in text file
     # if not os.path.exists("./options"): os.mkdir("./options")	
     # f = open("./options/{}.txt".format(opt.naming), "w")
@@ -148,10 +148,13 @@ def train(opt):
             con_cloth = Ft.grid_sample(con_cloth , grid2,padding_mode="border").detach()
             con_cloth = con_cloth * con_cloth_mask + (1 - con_cloth_mask)
 
-            # img1 = canny(con_cloth)
-            # img2 = canny(tar_cloth)
-				
-            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), torch.cat([pose,tar_cloth_mask],1))
+            con_canny = canny(con_cloth)
+            tar_canny = canny(tar_cloth)
+            con_canny = torch.where(con_canny == 0.5, torch.FloatTensor([0]).cuda(), con_canny)
+            con_canny = torch.where(con_canny > 0.5, torch.FloatTensor([1]).cuda(), con_canny)
+            tar_canny = torch.where(tar_canny == 0.5, torch.FloatTensor([0]).cuda(), tar_canny)
+            tar_canny = torch.where(tar_canny > 0.5, torch.FloatTensor([1]).cuda(), tar_canny)
+            [F, warp_cloth, warp_mask] = model(torch.cat([con_cloth, con_cloth_mask], 1), tar_cloth_mask)
             
             if (step+1) % opt.save_img_count == 0:
                 writer.add_images("con_cloth", con_cloth, cnt)
@@ -160,13 +163,13 @@ def train(opt):
                 writer.add_images("tar_cloth_mask", tar_cloth_mask, cnt, dataformats="NCHW")
                 writer.add_images("warp_cloth", warp_cloth, cnt)
                 writer.add_images("warp_mask", warp_mask, cnt, dataformats="NCHW")
-                # writer.add_images("result_canny", img1, cnt)
+                writer.add_images("result_canny", tar_canny, cnt)
                 # writer.add_images("GT_canny", img2, cnt)
 
             if epoch < limit:
                 loss = init_loss(F[0].transpose(1,2).transpose(2,3),net)
             else:
-                loss, roi_perc, struct, smt, stat, abs = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask)
+                loss, roi_perc, struct, smt, smt_canny, stat, abs, cany = Flow(PYRAMID_HEIGHT, F, warp_mask, warp_cloth, tar_cloth_mask, tar_cloth, con_cloth_mask, con_canny, tar_canny)
             
             # c_loss = cLoss.forward(warp_canny, img2) * 1000
             # loss += c_loss
@@ -196,12 +199,14 @@ def train(opt):
                     writer.add_scalar("loss/roi_perc", roi_perc, cnt)
                     writer.add_scalar("loss/struct", struct, cnt)
                     writer.add_scalar("loss/smt", smt, cnt)
+                    writer.add_scalar("loss/smt_canny", smt_canny, cnt)
+                    writer.add_scalar("loss/smt_canny", cany, cnt)
                 # writer.add_scalar("loss/canny", c_loss, cnt)
                 writer.add_scalar("loss/total", loss, cnt)
                 writer.close()
 
             if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_5_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_tmp1_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = '2,3'

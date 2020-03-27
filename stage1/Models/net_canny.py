@@ -230,7 +230,7 @@ class Canny(nn.Module):
 		self.suppression = NonMaximumSuppression()
 		self.threshold = ThresholdLayer()
 		self.suppressed = None
-	def forward(self, x, low_threshold = 11/256, gauss=False):
+	def forward(self, x, low_threshold = 48/256, gauss=False):
 		if (gauss == True): x = self.gauss(x)
 		magnitude, direction = self.sobel(x)
 

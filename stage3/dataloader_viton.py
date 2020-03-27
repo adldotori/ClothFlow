@@ -13,6 +13,7 @@ import pickle
 import sys
 sys.path.append("..")
 import neckmake
+import cv2
 
 #import time
 
@@ -63,6 +64,16 @@ class CFDataset(data.Dataset):
         cloth_mask = Image.open(path_mask)
 
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
+        path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
+        image_mask = Image.open(path_image_mask)
+        image_mask = (np.array(image_mask) > 0).astype(np.float32)
+
+        kernel = np.ones((3,3), np.uint8)
+        image_mask = cv2.erode(image_mask, kernel, iterations=4)
+        image_mask = cv2.dilate(image_mask, kernel, iterations=2)
+
+        image_mask = torch.from_numpy(image_mask)
+        image_mask = image_mask.unsqueeze_(0)
 
         image = Image.open(path_image)
         warped = Image.open(osp.join(self.warped_cloth_path,name+".jpg"))
@@ -85,6 +96,7 @@ class CFDataset(data.Dataset):
         image = self.transform(image)
         warped = self.transform(warped)
 
+    
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
@@ -109,6 +121,7 @@ class CFDataset(data.Dataset):
         pants = (parse_array == 9).astype(np.float32) + \
                   (parse_array == 12).astype(np.float32)
 
+        shape = torch.from_numpy(shape)
         cloth = torch.from_numpy(cloth)
         warped_mask = torch.from_numpy(warped_mask)
         arms = torch.from_numpy(arms)
@@ -119,18 +132,17 @@ class CFDataset(data.Dataset):
             pose_label = pickle.load(f)
         pose_data = pose_label
 
-        shape = neckmake.fullmake(shape,pose_data)
-        shape = torch.from_numpy(shape)
-        shape.unsqueeze_(0)
-
         # rgb_array = np.full((3,INPUT_SIZE[0],INPUT_SIZE[1]), np.random.rand(3))
         # rgb_array = rgb_array.astype(np.float32)
         # rand = torch.from_numpy(rgb_array)
-        image = image * shape + (1 - shape) * 0
+        image = image * image_mask + (1 - image_mask) * 0
         
+        off_cloth_mask = image_mask - head - pants
+        off_cloth_mask[off_cloth_mask<0] = 0
+
         crop_head = image * head + (1 - head)
         crop_cloth = image * cloth + (1 - cloth)
-        off_cloth = image * (1-cloth - arms) + cloth + arms
+        off_cloth = image * (1 - off_cloth_mask) + off_cloth_mask
         crop_arms = image * arms + (1-arms)
         crop_pants = (image * pants + (1-pants)) * (1 - warped_mask) + warped_mask
         cloth.unsqueeze_(0)
@@ -156,14 +168,13 @@ class CFDataset(data.Dataset):
                 pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
             one_map = self.transform_1ch(one_map)
             pose_map[i] = one_map[0]
-
         result = {
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
             'image': image,  # source image
             'head': crop_head,# cropped head from source image
             'pose': pose_map,#pose map
-            'tar_mask': shape,
+            'tar_mask': image_mask,
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : cloth,#cropped cloth mask
             'name' : name,

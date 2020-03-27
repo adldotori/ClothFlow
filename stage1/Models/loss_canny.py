@@ -155,10 +155,11 @@ class cannyLoss(nn.Module):
 		x3 = torch.cat([x, x, x], 1)
 		y3 = torch.cat([y, y, y], 1)
 		self.vgg(x3, y3)
+		percept = self.vgg.get_percept()
 		style = self.vgg.get_style()
 		self.vgg.zero_loss()
 		mse = self.mse(x, y)
-		return style, mse
+		return percept, mse
 
 if __name__=="__main__":
 	loss = WeightedMSE()

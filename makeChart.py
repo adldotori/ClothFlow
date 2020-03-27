@@ -63,7 +63,7 @@ def get_opt():
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
     parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_1107.pth")
     parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_3_2.pth")
-    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_0.pth")
+    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_1.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth")
     parser.add_argument("--result", default = "test_uw")
     parser.add_argument("--height", default = 512)
@@ -95,21 +95,20 @@ def load_inputs(opt,name, num):
     mask = Image.open(path_mask)
 
     c_mask_array = np.array(cloth_mask)
-    c_mask_array = (c_mask_array > 0).astype(np.float32)
+    c_mask_array = (c_mask_array > 25).astype(np.float32)
     c_mask = torch.from_numpy(c_mask_array)
     cloth_mask = c_mask.unsqueeze_(0)
     mask_array = np.array(mask)
-    mask = (mask_array > 0).astype(np.float32)
+    # mask = (mask_array > 0).astype(np.float32)
+    mask = (mask_array > 25).astype(np.float32)
+    mask = torch.from_numpy(mask)
+    mask = mask.unsqueeze_(0)
+
     cloth_ = transform(cloth)
     image = transform(image)
 
     seg = Image.open(path_segment)
     parse_array = np.array(seg)
-    parse_fla = parse_array.reshape(H*W, 1)
-    parse_fla = torch.from_numpy(parse_fla).long()
-    parse = torch.zeros(H*W, 20).scatter_(1, parse_fla, 1)
-    parse = parse.view(H, W, 20)
-    parse = parse.transpose(2, 0).transpose(2,1).contiguous()  # [20,256,192]
     shape = (parse_array > 0).astype(np.float32)  # condition body shape
     head = (parse_array == 1).astype(np.float32) + \
                 (parse_array == 2).astype(np.float32) + \
@@ -129,24 +128,22 @@ def load_inputs(opt,name, num):
     pants = torch.from_numpy(pants)
     shape = torch.from_numpy(shape)
 
+    image = image * mask + (1 - mask) * 0
+    off_cloth_mask = mask - head - pants
+    off_cloth_mask[off_cloth_mask<0] = 0
     crop_head = image * head + (1 - head)
     crop_cloth = image * cloth + (1 - cloth)
-    off_cloth = image * (1-cloth) + cloth
+    off_cloth = image * (1 - off_cloth_mask) + off_cloth_mask
     crop_arms = image * arms + (1-arms)
-    crop_pants = image * pants + (1-pants)
+    crop_pants = (image * pants + (1-pants))
 
     with open(path_pose_pkl, 'rb') as f:
         pose_label = pickle.load(f)
     pose_data = pose_label
     
     # mask = neckmake.fullmake(mask, pose_data)
-    pose_key = [k for k in pose_data]
-    if not ((16 not in pose_key) or (17 not in pose_key) or (2 not in pose_key) or (5 not in pose_key) or (3 not in pose_key) or (6 not in pose_key)):
-        # mask = neckmake.fullmake(mask, pose_data)
-        pass
-    mask = torch.from_numpy(mask)
-
-    mask = mask.unsqueeze_(0)
+    pose_key = [k for k in pose_data] 
+    
     point_num = 18
     pose_map = torch.zeros(point_num, H, W)
     r = 5
@@ -163,8 +160,6 @@ def load_inputs(opt,name, num):
             pointx = -1
             pointy = -1
 
-        #c_pointx = c_pointx * 192 / 762
-        #c_pointy = c_pointy * 256 / 1000
         if pointx > 1 and pointy > 1:
             draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
             pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
@@ -183,14 +178,14 @@ def load_inputs(opt,name, num):
         'crop_cloth_mask' : cloth,#cropped cloth mask
         'name' : name,
         'off_cloth': off_cloth,#source image - cloth
-        'parse' : parse,
         'pants_mask': pants,
         'crop_pants': crop_pants,
         'crop_arms': crop_arms,
         'mask': mask,
-
+        'arms': arms
     }
     return results
+    
 
 def main(opt, name, num):
     PYRAMID_HEIGHT = opt.PYRAMID_HEIGHT
@@ -200,11 +195,13 @@ def main(opt, name, num):
     #model1.to(device)
     model1 = nn.DataParallel(model1)
     model1.eval()
-    model2 = M2.FlowNet(PYRAMID_HEIGHT,4,1)
+    model2 = M2.FlowNet(5,4,1)
+    model2.train()
     #device = torch.device("cuda:2")
     #model2.to(device)
     model2 = nn.DataParallel(model2)
     model3 = M3.UNet(opt,27,5)
+    model3.eval()
     #device = torch.device("cuda:2")
     #model3.to(device)
     model3 = nn.DataParallel(model3)
@@ -221,25 +218,24 @@ def main(opt, name, num):
     set_requires_grad(model_CN,False)
     
     inputs = load_inputs(opt, name, num)
-    ori_cloth = batch_cuda(inputs["cloth"])
+    cloth = batch_cuda(inputs["cloth"])
     cloth_mask = batch_cuda(inputs["cloth_mask"])
     target_mask_real = batch_cuda(inputs["crop_cloth_mask"])
     target_pose = batch_cuda(inputs["pose"])
     mask = batch_cuda(inputs['mask'])
     answer = batch_cuda(inputs["image"])
-    parse = batch_cuda(inputs['parse'])
+    arms = batch_cuda(inputs['arms'])
 
-    # shape = batch_cuda(inputs["shape"])
-    # target_mask = model1(target_pose, cloth_mask, mask,  opt.is_top)
-    target_mask = model1(ori_cloth, cloth_mask, target_pose, mask, opt.is_top)
+    ori_cloth = cloth
+    
+    target_mask = model1(cloth, cloth_mask, target_pose, mask, opt.is_top)
     target_mask = (target_mask > -0.9).type(torch.float32)
     
     target_mask = target_mask.cpu().numpy()
     target_mask = target_mask.squeeze()
 
     kernel = np.ones((3,3), np.uint8)
-    target_mask = cv2.erode(target_mask, kernel, iterations=1)
-    target_mask = cv2.dilate(target_mask, kernel, iterations=2)
+    target_mask = cv2.erode(target_mask, kernel, iterations=4)
     target_mask = cv2.dilate(target_mask, kernel, iterations=2)
     
     target_mask = torch.from_numpy(target_mask).cuda()
@@ -248,31 +244,32 @@ def main(opt, name, num):
 
     # target_mask = target_mask * mask
     if not os.path.exists(osp.join(opt.result, name)): os.makedirs(osp.join(opt.result,name))
-    imsave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
-    imsave(ori_cloth, osp.join(opt.result, name, "cloth.jpg"))
-
-    # cloth_mask = (cloth_mask > 0).type(torch.float32)
+    masksave(target_mask,osp.join(opt.result,name,"stage1.jpg"))
+    imsave(cloth, osp.join(opt.result, name, "cloth.jpg"))
     masksave(cloth_mask, osp.join(opt.result, name, "cloth_mask.jpg"))
     
     masksave(target_mask_real.view(target_mask_real.shape[0], 1, target_mask_real.shape[1], target_mask_real.shape[2]), osp.join(opt.result, name, "target_mask.jpg"))
 
     params = model_CN(cloth_mask,target_mask)
     grid1 = projection.projection_grid(params,cloth_mask.shape)
-    grid2 = projection.projection_grid(params,ori_cloth.shape)
-    cloth = Ftnl.grid_sample(ori_cloth , grid2,padding_mode="border").detach()
-
+    grid2 = projection.projection_grid(params,cloth.shape)
+    cloth_mask = Ftnl.grid_sample(cloth_mask , grid1).detach()
+    cloth = Ftnl.grid_sample(cloth , grid2,padding_mode="border").detach()
+    cloth = cloth * cloth_mask + (1 - cloth_mask)
     imsave(cloth,osp.join(opt.result,name,"CN.jpg"))
-    
-    [F, warp_cloth, warp_mask] = model2(torch.cat([cloth, cloth_mask], 1), target_mask)
 
-    # warp_cloth = warp_cloth * target_mask
+    [F, warp_cloth, warp_mask] = model2(torch.cat([cloth, cloth_mask], 1), target_mask)
+    masksave(warp_mask, osp.join(opt.result, name, "warp_mask.jpg"))
+    
+    warp_cloth = warp_cloth * warp_mask + (1 - warp_mask)
     imsave(warp_cloth,osp.join(opt.result,name,"stage2.jpg"))
-    
-    target_mask = target_mask.to(target_mask_real.device)
-    masking = (target_mask + target_mask_real).clamp(0,1)
-    off_cloth = (answer * (1-masking) + masking).detach()
-    
-    imsave(off_cloth, osp.join(opt.result,name,"off_cloth.jpg"))
+
+    answer = answer * mask + (1 - mask) * 0
+    off_mask = target_mask_real + arms + warp_mask
+    off_mask[off_mask > 1] = 1
+    off_cloth = answer * (1- off_mask) + off_mask
+
+    imsave(off_cloth,osp.join(opt.result,name,"off_cloth.jpg"))
     imsave(answer, osp.join(opt.result, name, "image.jpg"))
     masksave(mask, osp.join(opt.result, name, "body_mask.jpg"))
     
@@ -285,6 +282,10 @@ def main(opt, name, num):
     imsave(pants, osp.join(opt.result, name, "pants.jpg"))
 
     result = model3(pose,warped,off_cloth,head)
+
+    all_mask = mask + target_mask
+    all_mask[all_mask > 0] = 1
+    result = result * all_mask + (1 - all_mask) * 0
 
     imsave(result, osp.join(opt.result,name,"result.jpg"))
 
@@ -300,8 +301,8 @@ def draw_chart():
     columns = 36
     rows = 4
 
-    h = (columns + 1) * 100
-    w = (rows + 1) * 100
+    h = (columns + 1) * 200
+    w = (rows + 1) * 200
     stage1 = Image.new("RGB", (h,w), (256,256,256))
     stage2 = Image.new("RGB", (h,w), (256,256,256))
     stage3 = Image.new("RGB", (h,w), (256,256,256))

@@ -1,286 +1,159 @@
-#coding=utf-8
+from __future__ import print_function
 import torch
-import torch.utils.data as data
-import torchvision.transforms as transforms
-import os
-from PIL import Image
-from PIL import ImageDraw
-from pathlib import Path
-import os.path as osp
+import torch.nn as nn
+import torch.nn.functional as Ft
+import torch.optim as optim
+import torchvision
+from torchvision import datasets, transforms
+import matplotlib.pyplot as plt
 import numpy as np
-import json
-import pickle
+import os
+import os.path as osp
 import sys
-import neckmake
+import argparse
+from tqdm import tqdm
+from torchvision.utils import save_image
+from tensorboardX import SummaryWriter
+import time
 
-#import time
-INPUT_SIZE = (512,512)
-def load_pkl(name):
-    with open(name,"rb") as f:
-        data = pickle.load(f)
-    return data
-
-def naming(file_name):
-    return file_name[:-6]
-
-class CFDataset(data.Dataset):
-    """Dataset for CP-VTON.
-    """
-    def __init__(self, opt):
-        super(CFDataset, self).__init__()
-        # base setting
-        self.opt = opt
-        self.root = opt.dataroot
-        self.datamode = opt.datamode # train or test or self-defined
-        self.fine_height = opt.fine_height
-        self.fine_width = opt.fine_width
-        self.radius = opt.radius
-        self.data_path = osp.join(opt.dataroot, opt.datamode)
-        self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-        self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
-        # self.warped_cloth_path = osp.join(opt.warped_cloth_path,opt.datamode)
-        # self.warped_mask_path = osp.join(opt.warped_mask_path,opt.datamode)
-        
-        # load data list
-        #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_list_"+self.datamode+".pkl"))
-
-    def name(self):
-        return "CFDataset"
-
-    def __getitem__(self, index):
+sys.path.append('..')
+from utils import *
+from Models.UNetS3 import *
+from Models.LossS3 import *
+from Models.net_canny import *
+from Models.loss_canny import *
+from dataloader_viton import *
 
 
-        #name = naming(self.image_files[index])
-        name = self.image_files[index]
+EPOCHS = 200
+PYRAMID_HEIGHT = 5
+NUM_STAGE = str(1)
+IS_TOPS = True
 
-        # cloth image & cloth mask
+if IS_TOPS:
+    stage = 'tops'
+    in_channels = 22
+else:
+    stage = 'bottoms'
+    in_channels = 2
+dataroot = '/home/fashionteam/viton_512/'
+datalist = 'train_MVC'+stage+'_pair.txt'
+checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
+runs = osp.join(PWD,'stage'+NUM_STAGE,'runs','train',stage)
 
-        path_cloth = osp.join(self.data_path,"cloth",name+"_1.jpg")
-        path_mask = osp.join(self.data_path, "cloth-mask",name+"_1.jpg")
-        cloth = Image.open(path_cloth)
-        cloth_mask = Image.open(path_mask)
-
-        path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
-
-        image = Image.open(path_image)
-        # warped = Image.open(osp.join(self.warped_cloth_path,name+".jpg"))
-        # warped_mask = Image.open(osp.join(self.warped_mask_path,name+".jpg"))
-        # warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
-        #warped_mask = torch.from_numpy(warped_mask)
-        #warped_mask = warped_mask.unsqueeze_(0)
-
-
-        H, W, C = np.array(image).shape###
-
-        c_mask_array = np.array(cloth_mask)
-        c_mask_array = (c_mask_array > 0).astype(np.float32)
-        c_mask = torch.from_numpy(c_mask_array)
-        cloth_mask = c_mask.unsqueeze_(0)
-
-        original_image = image #
-
-        cloth_ = self.transform(cloth)
-        image = self.transform(image)
-        # warped = self.transform(warped)
-
-        # parsing and pose path
-        path_seg = osp.join(self.data_path, "image-parse", name+"_0.png")
-        path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
-
-        # segment processing
-        seg = Image.open(path_seg)
-        parse_array = np.array(seg)
-
-        parse_fla = parse_array.reshape(H*W, 1)
-        parse_fla = torch.from_numpy(parse_fla).long()
-        parse = torch.zeros(H*W, 20).scatter_(1, parse_fla, 1)
-        parse = parse.view(H, W, 20)
-        parse = parse.transpose(2, 0).transpose(2,1).contiguous()  # [20,256,192]
-
-        shape = (parse_array > 0).astype(np.float32)  # condition body shape
-        head = (parse_array == 1).astype(np.float32) + \
-                 (parse_array == 2).astype(np.float32) + \
-                 (parse_array == 4).astype(np.float32) + \
-                 (parse_array == 13).astype(np.float32)
-        cloth = (parse_array == 5).astype(np.float32) + \
-                  (parse_array == 6).astype(np.float32) + \
-                  (parse_array == 7).astype(np.float32)
-
-        arms = (parse_array == 15).astype(np.float32) + \
-                  (parse_array == 14).astype(np.float32)
-        
-        pants = (parse_array == 9).astype(np.float32) + \
-                  (parse_array == 12).astype(np.float32)
-
-        # body_shape = shape
-        # shape_array = np.asarray(body_shape)
-        # body_fla = shape_array.reshape(H*W,1)
-        # body_fla = torch.from_numpy(body_fla).long()
-        # one_hot = torch.zeros(H*W, 2).scatter_(1, body_fla, 1)
-        # one_hot = one_hot.view(H, W, 2)
-        # one_hot = one_hot.transpose(2, 0).transpose(1, 2).contiguous() #[2,256,192]
-
-        # shape = Image.fromarray((shape*255).astype(np.uint8))
-        # shape_sample = shape.resize((self.fine_width//16, self.fine_height//16),Image.BILINEAR)
-        # shape_sample = shape_sample.resize((self.fine_width, self.fine_height),Image.BILINEAR)
-
-
-        # cloth_sample = Image.fromarray((cloth*255).astype(np.uint8)) # downsampling of cloth on the person
-        # cloth_sample = cloth_sample.resize((self.fine_width//4, self.fine_height//4), Image.BILINEAR)
-        # cloth_sample = cloth_sample.resize((self.fine_width, self.fine_height), Image.BILINEAR)
-        # shape_sample = self.transform_1ch(shape_sample)
-
-        head = torch.from_numpy(head)
-        cloth = torch.from_numpy(cloth)
-        # warped_mask = torch.from_numpy(warped_mask)
-        arms = torch.from_numpy(arms)
-        pants = torch.from_numpy(pants)
-        #shape = torch.from_numpy(shape)
-        # cloth_sample = self.transform_1ch(cloth_sample)
-        #c_cloth_sample = self.transform(c_cloth_sample)
-
-        
-        crop_head = image * head + (1 - head)
-        crop_cloth = image * cloth + (1 - cloth)
-        # off_cloth = image * (1-warped_mask) + warped_mask
-        crop_arms = image * arms + (1-arms)
-        crop_pants = image * pants + (1-pants)
-
-
-
-        """
-        c_pose_data = - np.ones((18, 2), dtype=int)
-        with open(path_c_pose, 'rb') as f:
-            pose_label = pickle.load(f)
-            for i in range(18):
-                if pose_label['subset'][0, i] != -1:
-                    c_pose_data[i, :] = pose_label['candidate'][int(pose_label['subset'][0, i]), :2]
-            c_pose_data = np.asarray(c_pose_data)
-        """
-        #start_time = time.time()
-        ###
-        with open(path_pose, 'rb') as f:
-            pose_label = pickle.load(f)
-        pose_data = pose_label
-
-        shape = neckmake.fullmake(shape,pose_data)
-        shape = torch.from_numpy(shape)
-        ###
-
-        point_num = 18
-        pose_map = torch.zeros(point_num, H, W)
-        r = self.radius
-        pose = Image.new('L', (W, H))
-        pose_draw = ImageDraw.Draw(pose)
-        for i in range(point_num):
-            one_map = Image.new('L', (W, H))
-            draw = ImageDraw.Draw(one_map)
-            if i in pose_data.keys():
-                pointx = pose_data[i][0]
-                pointy = pose_data[i][1]
-            else:
-                pointx = -1
-                pointy = -1
-
-            #c_pointx = c_pointx * 192 / 762
-            #c_pointy = c_pointy * 256 / 1000
-            if pointx > 1 and pointy > 1:
-                draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-                pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
-            one_map = self.transform_1ch(one_map)
-            pose_map[i] = one_map[0]
-
-        """
-        t_pose_data = - np.ones((18, 2), dtype=int)
-        with open(path_t_pose, 'rb') as f:
-            pose_label = pickle.load(f)
-            for i in range(18):
-                if pose_label['subset'][0, i] != -1:
-                    t_pose_data[i, :] = pose_label['candidate'][int(pose_label['subset'][0, i]), :2]
-            t_pose_data = np.asarray(t_pose_data)
-        """
-    
-        result = {
-            'cloth': cloth_,# original cloth
-            'cloth_mask': cloth_mask,# original cloth mask
-            'image': image,  # source image
-            'head': crop_head,# cropped head from source image
-            'pose': pose_map,#pose map
-            'shape': shape,
-            # 'shape_sample': shape_sample,
-            #'grid_image': im_g,
-            # if self.opt.stage == "GMM":
-            #     'target_softmax_shape': target_softmax_shape,
-            # 'one_hot': one_hot,# one_hot - body shape
-            'upper_mask': cloth,# cropped cloth mask
-            # 'head_mask': head,#head mask
-            'crop_cloth': crop_cloth,#cropped cloth
-            'crop_cloth_mask' : cloth,#cropped cloth mask
-            'name' : name,
-            # 'warped' : warped,
-            # 'off_cloth': off_cloth,#source image - cloth
-            'parse' : parse,
-            # 'cloth_sample': cloth_sample,#coarse cloth mask
-            # 'arms_mask': arms,
-            'pants_mask': pants,
-            'crop_pants': crop_pants,
-            'crop_arms': crop_arms,
-            }
-        #for i in result.keys():
-        #    print("%s - type: %s" %(i,type(result[i])))
-        # print(t_shape.shape, c_shape.shape, t_shape_mask.shape, im_g.shape)
-        return result
-
-
-    def __len__(self):
-        return len(self.image_files)
-
-class CFDataLoader(object):
-    def __init__(self, opt, dataset):
-        super(CFDataLoader, self).__init__()
-
-        train_sampler = None
-        self.data_loader = torch.utils.data.DataLoader(
-                dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
-                num_workers=opt.workers, pin_memory=True, sampler=train_sampler)
-        self.dataset = dataset
-        self.data_iter = self.data_loader.__iter__()
-       
-    def next_batch(self):
-        try:
-            batch = self.data_iter.__next__()
-        except StopIteration:
-            self.data_iter = self.data_loader.__iter__()
-            batch = self.data_iter.__next__()
-
-        return batch
-
-
-if __name__ == "__main__":
-    print("Check the dataset for geometric matching module!")
-    
-    import argparse
+def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default = "/home/fashionteam/Taeho/VITON/train")
-    parser.add_argument("--datamode", default = "")
-    parser.add_argument("--stage", default = "PGP")
-    parser.add_argument("--data_list", default = "MVCup_pair.txt")
-    parser.add_argument("--fine_width", type=int, default = 192)
-    parser.add_argument("--fine_height", type=int, default = 256)
-    parser.add_argument("--radius", type=int, default = 5)
-    parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
-    parser.add_argument('-b', '--batch-size', type=int, default=4)
+    parser.add_argument("--name", default = "TryOn")
+    parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
+    parser.add_argument('-b', '--batch_size', type=int, default=2)
     
+    parser.add_argument("--dataroot", default = dataroot)
+    parser.add_argument("--datamode", default = "train")
+    parser.add_argument("--data_list", default = datalist)
+    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
+    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
+    parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
+    parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
+    parser.add_argument("--display_count", type=int, default = 20)
+    parser.add_argument("--save_count", type=int, default = 500)
+    parser.add_argument("--save_count_npz", type=int, default = 50)
+    parser.add_argument("--runs", type=str, default=runs)
+    
+
     opt = parser.parse_args()
-    dataset = CFDataset(opt)
-    data_loader = CFDataLoader(opt, dataset)
+    return opt
 
-    print('Size of the dataset: %05d, dataloader: %04d' \
-            % (len(dataset), len(data_loader.data_loader)))
-    first_item = dataset.__getitem__(0)
-    first_batch = data_loader.next_batch()
+def train(opt):
+    model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
+    model = nn.DataParallel(model)
+    # load_checkpoint(model, 'stage1/checkpoints/tops/checkpoint_7_86000.pth')
+    model.cuda()
+    model.train()
 
-    from IPython import embed; embed()
+    canny = Canny()
+    canny.cuda()
 
+    optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+    train_dataset = CFDataset(opt)
+    train_loader = CFDataLoader(opt, train_dataset)
+
+    if os.path.isdir(opt.runs):
+        os.system('rm -r '+opt.runs)
+    os.makedirs(opt.runs)
+    writer = SummaryWriter(opt.runs)
+
+    rLoss = renderLoss()
+    cLoss = WeightedMSE()
+
+    for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
+        for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
+            cnt = epoch * (len(train_loader.dataset)//opt.batch_size + 1) + step + 1
+            
+            inputs = train_loader.next_batch()
+
+            con_cloth = inputs['cloth'].cuda()
+            con_cloth_mask = inputs["cloth_mask"].cuda()
+            name = inputs['name']
+            tar_cloth = inputs['crop_cloth'].cuda()
+            tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
+            tar_body_mask = inputs['tar_body_mask'].cuda()
+            pose = inputs['pose'].cuda()
+            arms_mask = inputs['arms_mask'].cuda()
+
+            result = model(pose, con_cloth, con_cloth_mask,IS_TOPS)
+            # result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
+
+            optimizer.zero_grad()
+            
+            img1 = canny(result)
+            img2 = canny(tar_cloth)
+				
+            writer.add_images("result_canny", img1, cnt)
+            writer.add_images("GT_canny", img2, cnt)
+
+            # style, mse = cLoss(img1, img2)
+            # if epoch <= 4:
+            #     style = style * 0.0
+            #     mse = mse * 0.0
+            # else:
+            #     style = style / 1000	
+            #     mse = mse * 100
+            r_loss = rLoss(result, tar_cloth_mask)
+
+            # c_loss = style + mse
+            # loss = c_loss + r_loss
+
+            loss = r_loss
+
+            loss.backward()
+            optimizer.step()
+
+            if (step+1) % opt.display_count == 0:
+                writer.add_images("cloth", con_cloth, cnt)
+                writer.add_images("mask", con_cloth_mask, cnt)
+                writer.add_images("GT", tar_cloth_mask, cnt)
+                writer.add_images('tar_cloth', tar_cloth, cnt)
+                writer.add_images("tar_body", tar_body_mask, cnt)
+                writer.add_images("Result", result, cnt)
+                writer.add_scalar("loss/loss", loss, cnt)
+                writer.add_scalar("loss/r_loss", r_loss, cnt)
+                writer.close()
+
+            # if (step+1) % opt.display_count == 0:
+            #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #         epoch+1, (step+1) * 1, len(train_loader.dataset)//opt.batch_size + 1,
+            #         100. * (step+1) / (len(train_loader.dataset)//opt.batch_size + 1), loss.item()))
+
+
+            if cnt % opt.save_count == 0:
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_9_%d.pth' % cnt))
+
+if __name__ == '__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1"
+
+    opt = get_opt()
+    train(opt)

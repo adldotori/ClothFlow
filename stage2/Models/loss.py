@@ -57,6 +57,130 @@ def absFlow(flow):
     return torch.mean(F)
 
 
+def gram_matrix(data):
+    a, b, c, d = data.size()  # a=batch size(=1)
+    # b=number of feature maps
+    # (c,d)=dimensions of a f. map (N=c*d)
+
+    features = data.view(a, b, c * d)  # resise F_XL into \hat F_XL
+    features_t = features.transpose(1,2)
+
+    G = torch.matmul(features, features_t)  # compute the gram product
+
+    del features
+    del features_t
+
+    return G
+
+
+
+class StyleLoss(nn.Module):
+
+    def __init__(self):
+        super(StyleLoss, self).__init__()
+        self.criterion = nn.L1Loss()
+
+    def forward(self, condition, target):
+        G1 = gram_matrix(condition)
+        G2 = gram_matrix(target)
+        loss = self.criterion(G1,G2)# G2 need detach 
+        return loss
+
+
+class Vgg19(nn.Module):
+    def __init__(self, requires_grad=False):
+        super(Vgg19, self).__init__()
+        vgg_pretrained_features = models.vgg19(pretrained=True).features
+        self.loss = 0
+        self.percept = 0
+        self.style = 0
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        self.slice5 = torch.nn.Sequential()
+        self.criterion = nn.L1Loss()
+        self.styleLoss = StyleLoss()
+        self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        for x in range(2):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(2, 7):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(7, 12):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(12, 21):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(21, 30):
+            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, X, Y):
+        h_relu1_X = self.slice1(X)
+        h_relu1_Y = self.slice1(Y)
+        self.percept += self.lamdas[0]*self.criterion(h_relu1_X,h_relu1_Y.detach())
+        self.style += self.gammas[0]*self.styleLoss(h_relu1_X,h_relu1_Y.detach())
+
+        h_relu2_X = self.slice2(h_relu1_X)
+        h_relu2_Y = self.slice2(h_relu1_Y)
+        self.percept += self.lamdas[1]*self.criterion(h_relu2_X,h_relu2_Y.detach())
+        self.style += self.gammas[1]*self.styleLoss(h_relu2_X,h_relu2_Y.detach())
+        
+        h_relu3_X = self.slice3(h_relu2_X)
+        h_relu3_Y = self.slice3(h_relu2_Y)
+        self.percept += self.lamdas[2]*self.criterion(h_relu3_X,h_relu3_Y.detach())
+        self.style += self.gammas[2]*self.styleLoss(h_relu3_X,h_relu3_Y.detach())
+
+        h_relu4_X = self.slice4(h_relu3_X)
+        h_relu4_Y = self.slice4(h_relu3_Y)
+        self.percept += self.lamdas[3]*self.criterion(h_relu4_X,h_relu4_Y.detach())
+        self.style += self.gammas[3]*self.styleLoss(h_relu4_X,h_relu4_Y.detach())
+
+        h_relu5_X = self.slice5(h_relu4_X)
+        h_relu5_Y = self.slice5(h_relu4_Y)
+        self.percept += self.lamdas[4]*self.criterion(h_relu5_X,h_relu5_Y.detach())
+        self.style += self.gammas[4]*self.styleLoss(h_relu5_X,h_relu5_Y.detach())
+
+        self.loss = self.percept + self.style
+        
+        return 0
+
+    def zero_loss(self):
+        self.loss = 0
+        self.percept = 0
+        self.style = 0
+    
+    def get_loss(self):
+        return self.loss
+    
+    def get_percept(self):
+        return self.percept
+        
+    def get_style(self):
+        return self.style
+
+class renderLoss(nn.Module):#Perceptual loss + Style loss ##condition is x and target is y.
+    def __init__(self, layids = None):
+        super(renderLoss, self).__init__()
+        self.vgg = Vgg19()
+        self.vgg.cuda()
+        self.criterion = nn.L1Loss()
+        self.lamdas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        self.gammas = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        self.layids = layids
+        self.styleLoss = StyleLoss()
+
+    def forward(self, x, y, mask=None):
+        self.vgg.zero_loss()
+        self.vgg(x,y)
+        loss = self.vgg.get_loss()
+        percept = self.vgg.get_percept()
+        style = self.vgg.get_style()
+        return percept
+
+
 
 
 class FeatureExtractor(nn.Module):
@@ -102,7 +226,8 @@ class FlowLoss(nn.Module):
         super(FlowLoss, self).__init__()
         self.l1_loss = nn.L1Loss()
         self.l2_loss = nn.MSELoss()
-        self.vgg_loss = VGGLoss()
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.vgg_loss = renderLoss()
         
         self.lambda_struct = opt.struct_loss
         self.lambda_smt = opt.smt_loss
@@ -119,13 +244,15 @@ class FlowLoss(nn.Module):
         net = net.transpose(2,3).transpose(1,2)
         return net
 	
-    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask): 
+    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask, con_canny, tar_canny): 
         _loss_roi_perc = self.loss_roi_perc(
             warp_mask, warp_cloth, tar_mask, tar_cloth)
         _loss_struct = self.loss_struct(warp_mask, tar_mask)
         _loss_smt = self.loss_smt(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]))
         for i in range(N-1):
             _loss_smt += self.loss_smt(F[i+1]-self.get_A(F[i+1].shape[0], F[i+1].shape[2], F[i+1].shape[3]))
+        _loss_smt_canny = self.loss_smt_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), tar_canny)
+        _loss_canny = self.loss_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), con_canny, tar_canny)
         
         if self.lambda_stat == -1:
             _loss_stat = torch.tensor(0)
@@ -137,12 +264,13 @@ class FlowLoss(nn.Module):
         else:
             _loss_abs = absFlow(F[0])
 
-        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat + self.lambda_abs * _loss_abs , _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, _loss_stat,_loss_abs
-        
+        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, self.lambda_smt * _loss_smt_canny,_loss_stat,_loss_abs, _loss_canny
+        #  + self.lambda_abs * _loss_abs - self.lambda_smt * _loss_smt_canny + _loss_canny
+
     def loss_struct(self, src, tar,version="MS"):
         if version == "MS":
             return torch.mean(torch.abs(F.leaky_relu(tar-src,0.1764)))
-        if version =="Original":
+        if version == "Original":
             return self.l1_loss(src, tar)
         return self.l1_loss(src, tar)
 
@@ -157,11 +285,37 @@ class FlowLoss(nn.Module):
     
     def loss_smt(self, mat):
         return (torch.sum(torch.abs(mat[:, :, :, 1:] - mat[:, :, :, :-1])) + \
-				  torch.sum(torch.abs(mat[:, :, 1:, :] - mat[:, :, :-1, :]))) / (mat.shape[2] * mat.shape[3])
-
+				  torch.sum(torch.abs(mat[:, :, 1:, :] - mat[:, :, :-1, :]))) /(mat.shape[2] * mat.shape[3])
         # return (torch.sum(torch.abs(mat[:, :, :, :-2] + mat[:, :, :, 2:] - 2*mat[:, :, :, 1:-1])) + \
 		# 		  torch.sum(torch.abs(mat[:, :, :-2, :] + mat[:, :, 2:, :] - 2 * mat[:, :, 1:-1, :]))) / (mat.shape[2] * mat.shape[3])
     
+    def loss_smt_canny(self, mat, canny):
+        size = 1
+        mat_v = mat[:, :, :, size:] * canny[:, :, :, size:]
+        mat_v_ = mat[:, :, :, :-size] * canny[:, :, :, size:] 
+        mat_h = mat[:, :, size:, :] * canny[:, :, size:, :]
+        mat_h_ = mat[:, :, :-size, :] * canny[:, :, size:, :]
+        loss_1 = torch.sum(torch.abs(mat_v - mat_v_)) + \
+                torch.sum(torch.abs(mat_h - mat_h_))
+
+        mat_v = mat[:, :, :, size:] * canny[:, :, :, :-size]
+        mat_v_ = mat[:, :, :, :-size] * canny[:, :, :, :-size] 
+        mat_h = mat[:, :, size:, :] * canny[:, :, :-size, :]
+        mat_h_ = mat[:, :, :-size, :] * canny[:, :, :-size, :]
+        loss_2 = torch.sum(torch.abs(mat_v - mat_v_)) + \
+                torch.sum(torch.abs(mat_h - mat_h_))
+
+        return (loss_1 + loss_2) /(mat.shape[2] * mat.shape[3])
+
+    def loss_canny(self, mat, con_canny, tar_canny):
+        mat = mat.transpose(1,2).transpose(2,3)
+        tar_canny = F.grid_sample(tar_canny, mat, padding_mode="border")
+
+        loss = self.bce_loss(con_canny, tar_canny)
+        # print(loss)
+        return loss
+
+
     def _gradient_penalty(self, real_data, generated_data):
         batch_size = real_data.size()[0]
 

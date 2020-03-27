@@ -22,15 +22,15 @@ from Models.UNetS3 import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_viton import *
+from dataloader_test import *
 
 PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 20
-    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_canny_7000.pth'
+    in_channels = 22
+    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_9_11000.pth'
 else:
     stage = 'bottoms'
     in_channels = 2
@@ -46,7 +46,7 @@ else:
 dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
 runs = osp.join(PWD,'stage1','runs','test',stage)
-result_dir = osp.join(PWD,'result_viton/warped_mask_dropout/',stage)
+result_dir = osp.join(PWD,'result_viton/warped_mask_last3/',stage)
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -79,7 +79,7 @@ def test(opt):
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
     model.cuda()
-    model.eval()
+    model.train()
     
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
@@ -90,7 +90,7 @@ def test(opt):
     if not osp.isdir(opt.result_dir):
         os.makedirs(opt.result_dir)
 
-    for step in tqdm(range(len(test_loader.dataset)//opt.batch_size + 1), desc='step'):
+    for step in range(len(test_loader.dataset)//opt.batch_size + 1):
 
         cnt = step + 1
         
@@ -103,7 +103,7 @@ def test(opt):
         tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
         pose = inputs['pose'].cuda()
 
-        result = model(pose, con_cloth_mask, tar_body_mask, IS_TOPS)
+        result = model(pose, con_cloth, con_cloth_mask, IS_TOPS)
 
         loss = rLoss(result, tar_cloth_mask)
 
@@ -117,15 +117,15 @@ def test(opt):
             writer.add_scalar("loss/loss", loss, cnt)
             writer.close()
 
-        # if (step+1) % opt.display_count == 0:
-        #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        #         epoch+1, (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
-        #         100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
+        if (step+1) % opt.display_count == 0:
+            print('Train [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
+                100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
         # result = (result > -0.9).type(torch.float32)
         save_images(result, name, opt.result_dir)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1"
 
     opt = get_opt()
     test(opt)

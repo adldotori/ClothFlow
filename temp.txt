@@ -1,1 +1,1 @@
-/home/fashionteam/underwear_512/WW1_0/image.png
+/home/fashionteam/underwear_512/gan/image.png

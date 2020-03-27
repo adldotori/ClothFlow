@@ -36,6 +36,7 @@ class CFDataset(data.Dataset):
         self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
+        self.warped_mask_path = opt.dataroot_mask
         
         # load data list
         self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
@@ -58,10 +59,13 @@ class CFDataset(data.Dataset):
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
 
         image = Image.open(path_image)
+        warped_mask = Image.open(osp.join(self.warped_mask_path,name+".jpg"))
+        warped_mask = (np.array(warped_mask) > 0).astype(np.float32)
+        
         H, W, C = np.array(image).shape###
 
         c_mask_array = np.array(cloth_mask)
-        c_mask_array = (c_mask_array > 0).astype(np.float32)
+        c_mask_array = (c_mask_array > 25).astype(np.float32)
         c_mask = torch.from_numpy(c_mask_array)
         cloth_mask = c_mask.unsqueeze_(0)
 
@@ -90,12 +94,17 @@ class CFDataset(data.Dataset):
         shape = torch.from_numpy(shape)
         head = torch.from_numpy(head)
         cloth = torch.from_numpy(cloth)
-        
+        warped_mask = torch.from_numpy(warped_mask)
+
         shape = shape.unsqueeze_(0)
         cloth = cloth.unsqueeze_(0)
+        warped_mask = warped_mask.unsqueeze_(0)
+
+        # cloth = warped_mask
 
         tar_cloth = image * cloth + (1 - cloth)
         cloth_ = cloth_ * c_mask + (1 - c_mask)
+
         
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)

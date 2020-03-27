@@ -31,13 +31,14 @@ IS_TOPS = True
 if IS_TOPS:
     stage = 'tops'
     in_channels = 27
-    checkpoint = 'stage3/checkpoints/train/tops/checkpoint_0.pth'
+    checkpoint = None
+    # checkpoint = 'stage3/checkpoints/train/tops/checkpoint_nec_2.pth'
 else:
     stage = 'bottomqs'
     in_channels = 9
 dataroot = '/home/fashionteam/viton_512'
 dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
-dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
+dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth_2",stage)
 init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/'+stage
@@ -87,7 +88,7 @@ def get_opt():
 def train(opt):
     model = UNet(opt, in_channels, PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
-    # load_checkpoint(model, opt.checkpoint)
+    load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.train()
     
@@ -122,9 +123,10 @@ def train(opt):
             parse = inputs['parse'].cuda()
             head_mask = inputs['head_mask'].cuda()
 
-            result = model(pose, warped, off_cloth, head)
-
-            result = result * (shape)
+            result = model(pose, warped, off_cloth)
+            all_mask = tar_mask + tar_cloth_mask
+            all_mask[all_mask>0] = 1
+            result = result * all_mask + (1 - all_mask) * 0
             WriteImage(writer,"GT", answer, cnt)
             #WriteImage(writer,"shape", shape, cnt)
             WriteImage(writer,"warped", warped, cnt)
@@ -136,16 +138,11 @@ def train(opt):
             WriteImage(writer,"con_cloth_mask", con_cloth_mask, cnt)
             WriteImage(writer,"tar_cloth_mask", tar_cloth_mask, cnt)
             WriteImage(writer,"head_res", result * head_mask + (1 - head_mask), cnt)
-            if IS_TOPS and epoch <= 1:
-                optimizer.zero_grad()
-                loss, percept, style = rLoss(result * head_mask + (1 - head_mask),head)
-                loss.backward()
-                optimizer.step()
-            else:	
-                optimizer.zero_grad()
-                loss, percept, style = rLoss(result * (tar_mask + tar_cloth_mask) + (1 - tar_mask - tar_cloth_mask),answer)
-                loss.backward()
-                optimizer.step()
+
+            optimizer.zero_grad()
+            loss, percept, style = rLoss(result, answer)
+            loss.backward()
+            optimizer.step()
 
             writer.add_scalar("loss/loss", loss, cnt)
             writer.add_scalar("loss/percept", percept, cnt)
@@ -154,7 +151,7 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_del_head_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '2,3'

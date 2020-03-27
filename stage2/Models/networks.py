@@ -279,4 +279,5 @@ def init_weights(net, init_type='normal'):
 
 
 if __name__ == "__main__":
-	test()
+	f = FlowNet(5,4,1)
+	print(f)
