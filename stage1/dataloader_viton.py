@@ -40,7 +40,8 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/stage1","viton_stage1.pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/stage1","viton_rea.pkl"))
+        # self.image_files = os.listdir('/home/fashionteam/')
 
     def name(self):
         return "CFDataset"

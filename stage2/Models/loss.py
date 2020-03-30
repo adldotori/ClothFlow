@@ -244,15 +244,15 @@ class FlowLoss(nn.Module):
         net = net.transpose(2,3).transpose(1,2)
         return net
 	
-    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask, con_canny, tar_canny): 
+    def forward(self, N, F, warp_mask, warp_cloth, tar_mask, tar_cloth,src_mask): 
         _loss_roi_perc = self.loss_roi_perc(
             warp_mask, warp_cloth, tar_mask, tar_cloth)
         _loss_struct = self.loss_struct(warp_mask, tar_mask)
         _loss_smt = self.loss_smt(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]))
         for i in range(N-1):
             _loss_smt += self.loss_smt(F[i+1]-self.get_A(F[i+1].shape[0], F[i+1].shape[2], F[i+1].shape[3]))
-        _loss_smt_canny = self.loss_smt_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), tar_canny)
-        _loss_canny = self.loss_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), con_canny, tar_canny)
+        # _loss_smt_canny = self.loss_smt_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), tar_canny)
+        # _loss_canny = self.loss_canny(F[0]-self.get_A(F[0].shape[0], F[0].shape[2], F[0].shape[3]), con_canny, tar_canny)
         
         if self.lambda_stat == -1:
             _loss_stat = torch.tensor(0)
@@ -264,7 +264,7 @@ class FlowLoss(nn.Module):
         else:
             _loss_abs = absFlow(F[0])
 
-        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, self.lambda_smt * _loss_smt_canny,_loss_stat,_loss_abs, _loss_canny
+        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, self.lambda_smt * _loss_smt_canny,_loss_stat,_loss_abs
         #  + self.lambda_abs * _loss_abs - self.lambda_smt * _loss_smt_canny + _loss_canny
 
     def loss_struct(self, src, tar,version="MS"):

@@ -40,7 +40,8 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        # self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        self.image_files = os.listdir('/home/fashionteam/viton_512/train/cloth')
 
     def name(self):
         return "CFDataset"
@@ -48,7 +49,7 @@ class CFDataset(data.Dataset):
     def __getitem__(self, index):
 
 
-        name = self.image_files[index]
+        name = self.image_files[index][:-6]
         
 
         # cloth image & cloth mask
@@ -76,7 +77,7 @@ class CFDataset(data.Dataset):
 
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
-        path_mask = osp.join(self.data_path, "image-mask", name+"_0.png")
+        # path_mask = osp.join(self.data_path, "image-mask", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
 
         # segment processing
@@ -84,8 +85,8 @@ class CFDataset(data.Dataset):
         parse = self.transform_1ch(seg)
         parse_array = np.array(seg)
 
-        mask = Image.open(path_mask)
-        mask_array = np.array(mask)
+        # mask = Image.open(path_mask)
+        # mask_array = np.array(mask)
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
         head = (parse_array == 1).astype(np.float32) + \
@@ -98,18 +99,18 @@ class CFDataset(data.Dataset):
         arms = (parse_array == 15).astype(np.float32) + \
                 (parse_array == 14).astype(np.float32)
 
-        mask = (mask_array > 25).astype(np.float32)
+        # mask = (mask_array > 25).astype(np.float32)
 
         head = torch.from_numpy(head)
         cloth = torch.from_numpy(cloth)
-        mask = torch.from_numpy(mask)
+        # mask = torch.from_numpy(mask)
         arms = torch.from_numpy(arms)
 
         crop_cloth = image * cloth + (1 - cloth)
         cloth_ = cloth_ * cloth_mask + (1 - cloth_mask)
 
         cloth = cloth.unsqueeze_(0)
-        mask = mask.unsqueeze_(0)
+        # mask = mask.unsqueeze_(0)
         arms = arms.unsqueeze_(0)
         
         with open(path_pose, 'rb') as f:
@@ -143,7 +144,7 @@ class CFDataset(data.Dataset):
             'name' : name,
             'crop_cloth' : crop_cloth,
             'crop_cloth_mask': cloth,
-            'tar_body_mask': mask,
+            # 'tar_body_mask': mask,
             'arms_mask': arms,
             }
         return result

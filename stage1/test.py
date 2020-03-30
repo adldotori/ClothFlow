@@ -30,7 +30,7 @@ IS_TOPS = True
 if IS_TOPS:
     stage = 'tops'
     in_channels = 22
-    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_9_11000.pth'
+    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_10_2.pth'
 else:
     stage = 'bottoms'
     in_channels = 2
@@ -99,7 +99,7 @@ def test(opt):
         con_cloth = inputs['cloth'].cuda()
         con_cloth_mask = inputs['cloth_mask'].cuda()
         name = inputs['name']
-        tar_body_mask = inputs['tar_body_mask'].cuda()
+        # tar_body_mask = inputs['tar_body_mask'].cuda()
         tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
         pose = inputs['pose'].cuda()
 

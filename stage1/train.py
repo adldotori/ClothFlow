@@ -38,6 +38,7 @@ else:
     in_channels = 2
 dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
+checkpoint = 'stage1/checkpoints/tops/checkpoint_10_19500.pth'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,'runs','train',stage)
 
@@ -46,7 +47,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=2)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -57,6 +58,7 @@ def get_opt():
     parser.add_argument("--grid_size", type=int, default = 5)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
+    parser.add_argument('--checkpoint', type=str, default=checkpoint, help='save checkpoint infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument("--display_count", type=int, default = 20)
     parser.add_argument("--save_count", type=int, default = 500)
@@ -70,7 +72,7 @@ def get_opt():
 def train(opt):
     model = UNet(opt, depth=PYRAMID_HEIGHT, in_channels=in_channels)
     model = nn.DataParallel(model)
-    # load_checkpoint(model, 'stage1/checkpoints/tops/checkpoint_7_86000.pth')
+    load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.train()
 
@@ -150,7 +152,7 @@ def train(opt):
 
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_10_%d.pth' % cnt))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_10_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "0,1"

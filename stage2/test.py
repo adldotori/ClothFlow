@@ -44,15 +44,15 @@ else:
     init_CN = 'backup/CN_bot_.pth'
 
 dataroot = '/home/fashionteam/viton_512'
-dataroot_mask = '/home/fashionteam/ClothFlow/result_viton/warped_mask/'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result_viton/warped_mask_last3/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
-result_dir = '/home/fashionteam/ClothFlow/result_viton/warped_cloth_2/'+stage
+result_dir = '/home/fashionteam/ClothFlow/result_viton/warped_cloth_3/'+stage
 exp = 'train/'+stage
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch-size', type=int, default=2)
+    parser.add_argument('-b', '--batch-size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -157,6 +157,6 @@ def test(opt):
         save_images(warp_cloth, name, opt.result_dir)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = '2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
     opt = get_opt()
     test(opt)

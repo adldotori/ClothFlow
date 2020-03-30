@@ -243,9 +243,9 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, target_pose,warped_cloth,off_cloth, head):
+    def forward(self, target_pose,warped_cloth,off_cloth):
         encoder_outs = []
-        x = torch.cat((target_pose,warped_cloth,off_cloth, head), 1)
+        x = torch.cat((target_pose,warped_cloth,off_cloth), 1)
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
             x, before_pool = module(x)
