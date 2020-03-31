@@ -32,13 +32,14 @@ IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 22
+    in_channels = 23
 else:
     stage = 'bottoms'
     in_channels = 2
 dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
-checkpoint = 'stage1/checkpoints/tops/checkpoint_10_19500.pth'
+checkpoint = None
+# checkpoint = 'stage1/checkpoints/tops/checkpoint_10_19500.pth'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,'runs','train',stage)
 
@@ -47,7 +48,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=12)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -55,7 +56,7 @@ def get_opt():
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
-    parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint', type=str, default=checkpoint, help='save checkpoint infos')
@@ -102,33 +103,16 @@ def train(opt):
             name = inputs['name']
             tar_cloth = inputs['crop_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-            # tar_body_mask = inputs['tar_body_mask'].cuda()
+            tar_body_mask = inputs['tar_body_mask'].cuda()
             pose = inputs['pose'].cuda()
             arms_mask = inputs['arms_mask'].cuda()
 
-            result = model(pose, con_cloth, con_cloth_mask,IS_TOPS)
+            result = model(pose, con_cloth, con_cloth_mask, tar_body_mask, IS_TOPS)
             # result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
 
             optimizer.zero_grad()
-            
-            img1 = canny(result)
-            img2 = canny(tar_cloth)
-				
-            writer.add_images("result_canny", img1, cnt)
-            writer.add_images("GT_canny", img2, cnt)
 
-            # style, mse = cLoss(img1, img2)
-            # if epoch <= 4:
-            #     style = style * 0.0
-            #     mse = mse * 0.0
-            # else:
-            #     style = style / 1000	
-            #     mse = mse * 100
             r_loss = rLoss(result, tar_cloth_mask)
-
-            # c_loss = style + mse
-            # loss = c_loss + r_loss
-
             loss = r_loss
 
             loss.backward()
@@ -139,7 +123,7 @@ def train(opt):
                 writer.add_images("mask", con_cloth_mask, cnt)
                 writer.add_images("GT", tar_cloth_mask, cnt)
                 writer.add_images('tar_cloth', tar_cloth, cnt)
-                # writer.add_images("tar_body", tar_body_mask, cnt)
+                writer.add_images("tar_body", tar_body_mask, cnt)
                 writer.add_images("Result", result, cnt)
                 writer.add_scalar("loss/loss", loss, cnt)
                 writer.add_scalar("loss/r_loss", r_loss, cnt)
@@ -152,10 +136,10 @@ def train(opt):
 
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_10_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_11_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
 
     opt = get_opt()
     train(opt)
