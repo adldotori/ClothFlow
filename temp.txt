@@ -1,1 +1,1 @@
-/home/fashionteam/underwear_512/gan/image.png
+/home/fashionteam/u_test_512/79610/image.png

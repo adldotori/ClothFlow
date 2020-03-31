@@ -55,15 +55,15 @@ def masksave(result, path, save=True):
 
 def get_opt():  
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="/home/fashionteam/underwear_512")
+    parser.add_argument("--dataroot", default="/home/fashionteam/u_test_512")
     parser.add_argument("--mode", default = "all") # mode = all | one
     parser.add_argument("--name", default = "raw_0") # valid if mode == one
     parser.add_argument("--version", default = "viton") # version = MVC | vitons
     parser.add_argument("--is_top", default = True) # valid if version == MVC
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
     parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_1107.pth")
-    parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_3_2.pth")
-    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_1.pth")
+    parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_tmp_1.pth")
+    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_final_2.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth")
     parser.add_argument("--result", default = "test_uw")
     parser.add_argument("--height", default = 512)
@@ -79,9 +79,11 @@ def load_inputs(opt,name, num):
     transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
 
     data_path = osp.join(opt.dataroot,name)
-    path_cloth = osp.join(data_path,"cloth-"+str(num)+".jpg")
+    cloth_list = os.listdir(osp.join(opt.dataroot, "cloth"))
+
+    path_cloth = osp.join(opt.dataroot, "cloth", cloth_list[num])
     path_image = osp.join(data_path,"image.png")
-    path_cloth_mask = osp.join(data_path,"cloth_mask-"+str(num)+".jpg")
+    path_cloth_mask = osp.join(opt.dataroot, "cloth-mask", cloth_list[num])
     path_segment = osp.join(data_path,"segment.png")
     path_pose_pkl = osp.join(data_path,"pose.pkl")
     path_mask = osp.join(data_path,"image_mask.jpg")
@@ -103,7 +105,6 @@ def load_inputs(opt,name, num):
     mask = (mask_array > 25).astype(np.float32)
     mask = torch.from_numpy(mask)
     mask = mask.unsqueeze_(0)
-
     cloth_ = transform(cloth)
     image = transform(image)
 
@@ -128,8 +129,8 @@ def load_inputs(opt,name, num):
     pants = torch.from_numpy(pants)
     shape = torch.from_numpy(shape)
 
-    image = image * mask + (1 - mask) * 0
-    off_cloth_mask = mask - head - pants
+    image = image
+    off_cloth_mask = shape - head - pants
     off_cloth_mask[off_cloth_mask<0] = 0
     crop_head = image * head + (1 - head)
     crop_cloth = image * cloth + (1 - cloth)
@@ -294,15 +295,16 @@ def main(opt, name, num):
 
 def draw_chart():
     opt = get_opt()
-    names = os.listdir(opt.dataroot)
+    # names = os.listdir(opt.dataroot)
+    names = [i for i in os.listdir(opt.dataroot) if i[0] is not 'c']
 
     # names = [i for i in names if i[0] is '0']
 
-    columns = 36
-    rows = 4
+    columns = 4
+    rows = 10
 
-    h = (columns + 1) * 200
-    w = (rows + 1) * 200
+    h = (columns + 1) * 512
+    w = (rows + 1) * 512
     stage1 = Image.new("RGB", (h,w), (256,256,256))
     stage2 = Image.new("RGB", (h,w), (256,256,256))
     stage3 = Image.new("RGB", (h,w), (256,256,256))

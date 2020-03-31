@@ -4,7 +4,7 @@ import numpy as np
 import os.path as osp
 import cv2
 
-base_dir = '/home/fashionteam/matting/'
+base_dir = '/home/fashionteam/clipping_magic_20200331_012659/'
 
 for image_ in os.listdir(base_dir):
     image = np.array(Image.open(osp.join(base_dir, image_)))
@@ -20,7 +20,7 @@ for image_ in os.listdir(base_dir):
     # print(image[:,:,0:1])
     # print(mask)
     # print(mask.shape)
-    cv2.imwrite(osp.join('/home/fashionteam/viton_512/train/image-mask',image_.split('_')[0]+'_0.png'), mask)
+    cv2.imwrite(osp.join(base_dir, image_), mask)
 
 
 # image = np.array(Image.open(osp.join(base_dir, 'nonneck_mask.jpg')))

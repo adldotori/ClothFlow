@@ -32,13 +32,11 @@ if IS_TOPS:
     stage = 'tops'
     in_channels = 22
     checkpoint = None
-    checkpoint = 'makeneck/checkpoints/checkpoint_2.pth'
+    # checkpoint = 'makeneck/checkpoints/checkpoint_2.pth'
 else:
     stage = 'bottomqs'
     in_channels = 9
 dataroot = '/home/fashionteam/viton_512'
-dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
-dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
 init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/makeneck/checkpoints/'
@@ -50,11 +48,9 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=8)
     
     parser.add_argument("--dataroot", default = dataroot)
-    parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
-    parser.add_argument("--dataroot_cloth", type=str, default=dataroot_cloth)
     parser.add_argument("--datamode", default = "train")
     parser.add_argument("--stage", default = stage)
     parser.add_argument("--data_list", default = datalist)
@@ -118,6 +114,12 @@ def train(opt):
             WriteImage(writer,"result", result, cnt)
             WriteImage(writer,"head", head, cnt)
 
+            write_images(writer,"GT", answer, cnt)
+            WriteImage(writer,"nonneck", nonneck, cnt)
+            WriteImage(writer,"parse", parse, cnt)
+            WriteImage(writer,"result", result, cnt)
+            WriteImage(writer,"head", head, cnt)
+
             if epoch <= 0:
                 optimizer.zero_grad()
                 loss, percept, style = rLoss(result, head)
@@ -136,10 +138,10 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_%d.pth' % (cnt)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_1_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
 
     opt = get_opt()
     train(opt)

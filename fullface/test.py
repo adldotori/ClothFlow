@@ -26,9 +26,9 @@ PYRAMID_HEIGHT = 5
 
 stage = 'tops'
 in_channels = 3
-checkpoint = 'fullface/checkpoints/checkpoint_68000.pth'
+checkpoint = 'fullface/checkpoints/checkpoint_1_0.pth'
 
-dataroot = '/home/fashionteam/sample/all/'
+dataroot = '/home/fashionteam/all_/'
 result_dir = osp.join(PWD,'fullface/result')
 exp = 'train/'+stage
         
@@ -98,10 +98,7 @@ def test(opt):
         WriteImage(writer, "result", result, cnt, 1)
         writer.close()
 
-        name = [i[:-4] for i in name]
         save_images(result,name,result_dir)
-        nameprime = [i+'prime' for i in name]
-        save_images(lack, nameprime,result_dir)
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "1"

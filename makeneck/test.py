@@ -20,25 +20,23 @@ sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_MVC import *
+from dataloader_test import *
 
 PYRAMID_HEIGHT = 5
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 33
-    checkpoint = 'backup/stage3_top_512.pth'
+    in_channels = 22
+    checkpoint = 'stage3/checkpoints/ck_745.pth'
 else:
     stage = 'bottoms'
     in_channels = 9
     checkpoint = 'backup/stage3_bot_512.pth'
 
-dataroot = '/home/fashionteam/dataset_MVC_'+stage
-dataroot_mask = osp.join(PWD,"result/warped_mask",stage)
-dataroot_cloth = osp.join(PWD,"result/warped_cloth",stage)
+dataroot = '/home/fashionteam/all'
 datalist = 'train_MVC'+stage+'_pair.txt'
-result_dir = osp.join(PWD,'result/final',stage)
 exp = 'train/'+stage
+result_dir = '/home/fashionteam/all'
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -46,8 +44,6 @@ def get_opt():
     parser.add_argument('-b', '--batch_size', type=int, default=1)
     
     parser.add_argument("--dataroot", default = dataroot)
-    parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
-    parser.add_argument("--dataroot_cloth", type=str, default=dataroot_cloth)
     parser.add_argument("--datamode", default = "train")
     parser.add_argument("--stage", default = stage)
     parser.add_argument("--data_list", default = datalist)
@@ -77,7 +73,7 @@ def get_opt():
 
 def test(opt):
 
-    model = UNet(opt, 24, 5)
+    model = UNet(opt, in_channels, 5)
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
 
@@ -99,22 +95,20 @@ def test(opt):
         
         inputs = test_loader.next_batch()
         
-        con_cloth = inputs['cloth'].cuda()
-        warped = inputs['warped'].cuda()
+        nonneck = inputs['nonneck'].cuda()
         answer = inputs['image'].cuda()
-        off_cloth = inputs['off_cloth'].cuda()
+        parse = inputs['parse'].cuda()
         pose = inputs['pose'].cuda()
         head = inputs['head'].cuda()
-        pants = inputs['crop_pants'].cuda()
         name = inputs['name']
 
-        result = model(con_cloth,off_cloth,pose,warped,head,pants)
+        result = model(pose, nonneck, parse)
 
-        WriteImage(writer,"GT", answer, cnt)
-        WriteImage(writer,"warped", warped, cnt)
-        WriteImage(writer,"con_cloth", con_cloth, cnt)#, dataformats="NCHW")
-        WriteImage(writer,"off_cloth", off_cloth, cnt)
-        WriteImage(writer,"Result", result, cnt)
+        # WriteImage(writer,"GT", answer, cnt)
+        # WriteImage(writer,"warped", warped, cnt)
+        # WriteImage(writer,"con_cloth", con_cloth, cnt)#, dataformats="NCHW")
+        # WriteImage(writer,"off_cloth", off_cloth, cnt)
+        # WriteImage(writer,"Result", result, cnt)
 
         loss, percept, style = rLoss(result,answer)
 
@@ -130,7 +124,7 @@ def test(opt):
 
         writer.close()
 
-        save_images(result,name,result_dir)
+        save_images(result,['image_'],result_dir+'/'+name[0])
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"

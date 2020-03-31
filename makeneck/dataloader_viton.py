@@ -101,7 +101,7 @@ class CFDataset(data.Dataset):
         pants = (parse_array == 9).astype(np.float32) + \
                   (parse_array == 12).astype(np.float32)
 
-        nonneck = image * shape
+        nonneck = image * shape + (1 - shape) * 0
         head = torch.from_numpy(head)
         crop_head = image * head + (1 - head)
 

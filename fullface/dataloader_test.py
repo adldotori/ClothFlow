@@ -39,12 +39,14 @@ class CFDataset(data.Dataset):
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
-        self.data_path = opt.dataroot
+        self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
-        self.image_files = os.listdir(osp.join(self.data_path, 'image'))
-        
+        # load data list
+        self.image_files = [i for i in os.listdir(self.root) if osp.isdir(osp.join(self.root, i))]
+        # self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+
     def name(self):
         return "CFDataset"
 
@@ -52,19 +54,81 @@ class CFDataset(data.Dataset):
         name = self.image_files[index]
 
         # cloth image & cloth mask
-        path_image = osp.join(self.data_path, 'image', name) # condition image path
-        path_shape = osp.join(self.data_path, 'seg', name)
+
+        path_image = osp.join(self.root, name, "image.png") # condition image path
 
         image = Image.open(path_image)
+        H, W, C = np.array(image).shape###
+        original_image = image #
         image = self.transform(image)
 
-        shape = Image.open(path_shape)
-        parse_array = np.array(shape)
-        shape = (parse_array > 0).astype(np.float32)
-        lack = image * shape + (1 - shape) * 0
-        # print(lack.shape)
-        # lack = transforms.ToPILImage(mode='RGB')(lack)
-        # lack = self.transform(lack)
+        # parsing and pose path
+        path_seg = osp.join(self.root, name, "segment.png")
+        path_pose = osp.join(self.root, name, "pose.pkl")
+
+        # segment processing
+        seg = Image.open(path_seg)
+        parse = self.transform_1ch(seg)
+        parse_array = np.array(seg)
+
+        shape = (parse_array > 0).astype(np.float32)  # condition body shape
+        head = (parse_array == 1).astype(np.float32) + \
+                 (parse_array == 2).astype(np.float32) + \
+                 (parse_array == 4).astype(np.float32) + \
+                 (parse_array == 13).astype(np.float32)
+        cloth = (parse_array == 5).astype(np.float32) + \
+                  (parse_array == 6).astype(np.float32) + \
+                  (parse_array == 7).astype(np.float32)
+
+        arms = (parse_array == 15).astype(np.float32) + \
+                  (parse_array == 14).astype(np.float32)
+        
+        pants = (parse_array == 9).astype(np.float32) + \
+                  (parse_array == 12).astype(np.float32)
+
+        face = (parse_array == 13).astype(np.float32)
+        face = torch.from_numpy(face)
+
+        with open(path_pose, 'rb') as f:
+            pose_label = pickle.load(f)
+        pose_data = pose_label
+
+        point_num = 18
+        pose_map = torch.zeros(point_num, H, W)
+        r = self.radius
+        pose = Image.new('L', (W, H))
+        pose_draw = ImageDraw.Draw(pose)
+        for i in range(point_num):
+            one_map = Image.new('L', (W, H))
+            draw = ImageDraw.Draw(one_map)
+            if i in pose_data.keys():
+                pointx = pose_data[i][0]
+                pointy = pose_data[i][1]
+            else:
+                pointx = -1
+                pointy = -1
+
+            if pointx > 1 and pointy > 1:
+                draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+                pose_draw.rectangle((pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white')
+            one_map = self.transform_1ch(one_map)
+            pose_map[i] = one_map[0]
+
+        lack = image * (shape - head)
+        area = torch.mean(face) * INPUT_SIZE[0] * INPUT_SIZE[1]
+        size = (torch.sqrt(area)//(torch.rand(1)*0.3+1.2)).int()
+
+        if 0 in pose_data.keys():
+            head = image * head + (1 - head) * 0
+            tmp = head.clone()
+            tmp[:,pose_data[0][1]-size:pose_data[0][1]+size,pose_data[0][0]-size:pose_data[0][0]+size] = 0
+            face = head * np.where(tmp==0,1,0)
+            face = face.type(torch.FloatTensor)
+            lack = lack + face
+        else:
+            face = image * head + (1 - head) * 0
+            lack = full
+
         result = {
             'lack': lack,
             'name': name,

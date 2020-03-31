@@ -80,12 +80,22 @@ class CFDataset(data.Dataset):
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
+        path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
+
+        image_mask = Image.open(path_image_mask)
+        image_mask = (np.array(image_mask) > 25).astype(np.float32)
+
+        # kernel = np.ones((3,3), np.uint8)
+        # image_mask = cv2.erode(image_mask, kernel, iterations=4)
+        # image_mask = cv2.dilate(image_mask, kernel, iterations=2)
+
+        image_mask = torch.from_numpy(image_mask)
+        image_mask = image_mask.unsqueeze_(0)
 
         # segment processing
         seg = Image.open(path_seg)
         parse = self.transform_1ch(seg)
         parse_array = np.array(seg)
-        print(parse_array[parse_array<0])
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
         head = (parse_array == 1).astype(np.float32) + \
@@ -101,7 +111,6 @@ class CFDataset(data.Dataset):
                   (parse_array == 12).astype(np.float32)
         face = (parse_array == 13).astype(np.float32)
 
-        print(np.mean(shape))
         face = torch.from_numpy(face)
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)
@@ -132,7 +141,7 @@ class CFDataset(data.Dataset):
             one_map = self.transform_1ch(one_map)
             pose_map[i] = one_map[0]
 
-        full = image * shape
+        full = image * image_mask
         lack = image * (shape - head)
         area = torch.mean(face) * INPUT_SIZE[0] * INPUT_SIZE[1]
         size = (torch.sqrt(area)//(torch.rand(1)*0.3+1.2)).int()

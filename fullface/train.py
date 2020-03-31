@@ -20,7 +20,7 @@ sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_MVC import *
+from dataloader_train import *
 
 EPOCHS = 200
 PYRAMID_HEIGHT = 5
@@ -34,7 +34,7 @@ if IS_TOPS:
 else:
     stage = 'bottomqs'
     in_channels = 9
-dataroot = '/home/fashionteam/dataset_MVC_tops/train/'
+dataroot = '/home/fashionteam/viton_512/'
 dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
 dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
 datalist = 'train_MVC'+stage+'_pair.txt'
@@ -47,7 +47,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=6)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -59,7 +59,7 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--grid_size", type=int, default = 10)
-    parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
@@ -102,10 +102,10 @@ def train(opt):
             face = inputs['face'].cuda()
 
             result = model(lack)
-            WriteImage(writer,"lack", lack, cnt,1)
-            WriteImage(writer,"full", full, cnt,1)
-            WriteImage(writer,"face", face, cnt,1)
-            WriteImage(writer,"result", result, cnt,1)
+            WriteImage(writer,"lack", lack, cnt)
+            WriteImage(writer,"full", full, cnt)
+            WriteImage(writer,"face", face, cnt)
+            WriteImage(writer,"result", result, cnt)
 
             optimizer.zero_grad()
             loss, percept, style = rLoss(result, full)
@@ -119,10 +119,10 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_1_%d.pth' % (cnt)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_1_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
 
     opt = get_opt()
     train(opt)

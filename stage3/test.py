@@ -26,7 +26,7 @@ PYRAMID_HEIGHT = 5
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 33
+    in_channels = 24
     checkpoint = 'backup/stage3_top_512.pth'
 else:
     stage = 'bottoms'
@@ -77,7 +77,7 @@ def get_opt():
 
 def test(opt):
 
-    model = UNet(opt, 24, 5)
+    model = UNet(opt, in_channels, 5)
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
 

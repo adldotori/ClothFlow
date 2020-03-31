@@ -14,14 +14,14 @@ def action(dir, first):
 	segmentation(dir, first)
 
 # change to the directory that contains file each with image.png inside
-BASE_DIR = "/home/fashionteam/underwear_512/gan"
+BASE_DIR = "/home/fashionteam/u_test_512"
 
-action(BASE_DIR,True)
+# action(BASE_DIR,True)
 
-# data_path = BASE_DIR 
-# data_list = os.listdir(data_path)
-# data_list.sort()
-# first = True
+data_path = BASE_DIR 
+data_list = os.listdir(data_path)
+data_list.sort()
+first = True
 
 
 # path_image = osp.join("/home/fashionteam/dataset_test/2/F_korea_2.png")
@@ -32,9 +32,11 @@ action(BASE_DIR,True)
 # cv2.imwrite('segment.png',seg[1])
 # print(' [*] SAVED')
 
-# for elem in data_list:
-# 	dir = os.path.join(data_path, elem)
-# 	action(dir, first)
-# 	first = False
-# 	print("{} DONE".format(elem))
+for elem in data_list:
+	print(elem)
+	dir = os.path.join(data_path, elem)
+	print(dir)
+	action(dir, first)
+	first = False
+	print("{} DONE".format(elem))
 
