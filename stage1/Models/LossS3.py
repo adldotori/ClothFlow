@@ -10,4 +10,4 @@ class renderLoss(nn.Module):
         self.cross = nn.CrossEntropyLoss()
 
     def forward(self, x, y):
-        return self.loss(x, y) 
+        return self.cross(x, y) 

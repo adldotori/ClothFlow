@@ -20,7 +20,7 @@ sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
 from Models.LossS3 import *
-from dataloader_train import *
+from dataloader_MVC import *
 
 EPOCHS = 200
 PYRAMID_HEIGHT = 5
@@ -30,11 +30,11 @@ if IS_TOPS:
     stage = 'tops'
     in_channels = 3
     checkpoint = None
-    # checkpoint = 'makeneck/checkpoints/checkpoint_2.pth'
+    # checkpoint = 'fullface/checkpoints/ck11.pth'
 else:
     stage = 'bottomqs'
     in_channels = 9
-dataroot = '/home/fashionteam/viton_512/'
+dataroot = '/home/fashionteam/dataset_MVC_tops/'
 dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
 dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
 datalist = 'train_MVC'+stage+'_pair.txt'
@@ -47,7 +47,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=6)
+    parser.add_argument('-b', '--batch_size', type=int, default=5)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -65,7 +65,42 @@ def get_opt():
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
     parser.add_argument('--checkpoint', type=str, default=checkpoint, help='model checkpoint for initialization')
     parser.add_argument("--display_count", type=int, default = 20)
-    parser.add_argument("--save_count", type=int, default = 500)
+    parser.add_argument("--save_count", type=int, default = 1000)
+    parser.add_argument("--save_count_npz", type=int, default = 50)
+    parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
+    
+    parser.add_argument("--naming", type=str, default="default")
+    parser.add_argument("--save_dir", type=str, default="npz")
+    parser.add_argument("--exp", type=str, default=exp)
+    
+
+    opt = parser.parse_args()
+    return opt
+
+def get_test_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", default = "TryOn")
+    parser.add_argument("--gpu_ids", default = "0")
+    parser.add_argument('-j', '--workers', type=int, default=1)
+    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    
+    parser.add_argument("--dataroot", default = dataroot)
+    parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
+    parser.add_argument("--dataroot_cloth", type=str, default=dataroot_cloth)
+    parser.add_argument("--datamode", default = "test")
+    parser.add_argument("--stage", default = stage)
+    parser.add_argument("--data_list", default = datalist)
+    parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
+    parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
+    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
+    parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
+    parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
+    parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
+    parser.add_argument('--checkpoint', type=str, default=checkpoint, help='model checkpoint for initialization')
+    parser.add_argument("--display_count", type=int, default = 20)
+    parser.add_argument("--save_count", type=int, default = 1000)
     parser.add_argument("--save_count_npz", type=int, default = 50)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     
@@ -80,13 +115,15 @@ def get_opt():
 def train(opt):
     model = UNet(opt, in_channels, PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
-    # load_checkpoint(model, opt.checkpoint)
+    load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.train()
     
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
+    test_dataset = CFDataset(get_test_opt())
+    test_loader = CFDataLoader(get_test_opt(), test_dataset)
 
     writer = SummaryWriter()
     rLoss = renderLoss()
@@ -119,10 +156,20 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_1_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_2_%d.pth' % (cnt)))
+        
+        inputs = test_loader.next_batch()
+        lack = inputs['lack'].cuda()
+        full = inputs['full'].cuda()
+        face = inputs['face'].cuda()
+
+        result = model(lack)
+
+        loss, percept, style = rLoss(result, full)
+        print("Loss : %.2f\n", loss)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '1,2,3'
 
     opt = get_opt()
     train(opt)

@@ -26,12 +26,27 @@ PYRAMID_HEIGHT = 5
 
 stage = 'tops'
 in_channels = 3
-checkpoint = 'fullface/checkpoints/checkpoint_1_0.pth'
+checkpoint = 'fullface/checkpoints/ck11.pth'
 
-dataroot = '/home/fashionteam/all_/'
-result_dir = osp.join(PWD,'fullface/result')
+dataroot = '/home/fashionteam/final_test/'
+result_dir = '/home/fashionteam/final_test/'
 exp = 'train/'+stage
         
+# def save_images(img_tensors, img_names, save_dir):
+#     for img_tensor, img_name in zip(img_tensors, img_names):
+#         img = img_tensor.clone()* 255
+#         if img.shape[0] == 1:
+#             img = img[0,:,:]
+#         else:
+#             img = img.transpose(0, 1).transpose(1, 2)
+#         img = img.cpu().clamp(0,255)
+
+#         # array = tensor.numpy().astype('uint8')
+#         img = img.detach().numpy().astype('uint8')
+#         image = Image.fromarray(img)
+#         # image.show()
+#         image.save(os.path.join(save_dir, img_name + '.jpg'))
+
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
@@ -98,10 +113,10 @@ def test(opt):
         WriteImage(writer, "result", result, cnt, 1)
         writer.close()
 
-        save_images(result,name,result_dir)
+        save_images(result,['image_'],result_dir+name[0])
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "1"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0"
 
     opt = get_opt()
     test(opt)

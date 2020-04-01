@@ -114,6 +114,7 @@ class CFDataset(data.Dataset):
             one_map = self.transform_1ch(one_map)
             pose_map[i] = one_map[0]
 
+        image = image * shape + (1 - shape) * 0
         lack = image * (shape - head)
         area = torch.mean(face) * INPUT_SIZE[0] * INPUT_SIZE[1]
         size = (torch.sqrt(area)//(torch.rand(1)*0.3+1.2)).int()
@@ -130,7 +131,7 @@ class CFDataset(data.Dataset):
             lack = full
 
         result = {
-            'lack': lack,
+            'lack': image,
             'name': name,
             }
         return result

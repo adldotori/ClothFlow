@@ -53,11 +53,13 @@ class CFDataset(data.Dataset):
         self.fine_height = opt.fine_height
         self.fine_width = opt.fine_width
         self.radius = opt.radius
-        self.data_path = opt.dataroot
+        self.data_path = osp.join(opt.dataroot, opt.datamode)
         self.transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
 
-        self.image_files = os.listdir(self.root)
+        self.image_files = os.listdir(self.data_path)
+        if self.datamode == 'test':
+            self.image_files = os.listdir(self.data_path)[:100]
 
     def name(self):
         return "CFDataset"
@@ -194,7 +196,6 @@ class CFDataLoader(object):
             batch = self.data_iter.__next__()
 
         return batch
-
 
 if __name__ == "__main__":
     print("Check the dataset for geometric matching module!")

@@ -11,6 +11,7 @@ import numpy as np
 import json
 import pickle
 import sys
+import random
 sys.path.append("..")
 # import neckmake
 
@@ -45,7 +46,7 @@ class CFDataset(data.Dataset):
         
         # load data list
         #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/stage1/","stage1_dat.pkl"))
 
     def name(self):
         return "CFDataset"
@@ -77,6 +78,15 @@ class CFDataset(data.Dataset):
         cloth_ = self.transform(cloth)
         image = self.transform(image)
 
+        aug_image = torch.zeros(image.shape)
+        w = random.randint(-150,150)
+        h = random.randint(0,200)
+        if w < 0:
+            aug_image[:, h:, :INPUT_SIZE[0]+w] = image[:, :INPUT_SIZE[1]-h, -w:]
+        else:
+            aug_image[:, h:, w:] = image[:, :INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
+        image = aug_image
+
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
@@ -84,7 +94,13 @@ class CFDataset(data.Dataset):
 
         image_mask = Image.open(path_image_mask)
         image_mask = (np.array(image_mask) > 25).astype(np.float32)
-
+        aug_image_mask = np.zeros(image_mask.shape)
+        if w < 0:
+            aug_image_mask[h:, :INPUT_SIZE[0]+w] = image_mask[:INPUT_SIZE[1]-h, -w:]
+        else:
+            aug_image_mask[h:, w:] = image_mask[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
+        image_mask = aug_image_mask.astype(np.float32)
+        
         # kernel = np.ones((3,3), np.uint8)
         # image_mask = cv2.erode(image_mask, kernel, iterations=4)
         # image_mask = cv2.dilate(image_mask, kernel, iterations=2)
@@ -96,6 +112,13 @@ class CFDataset(data.Dataset):
         seg = Image.open(path_seg)
         parse = self.transform_1ch(seg)
         parse_array = np.array(seg)
+
+        aug_parse_array = np.zeros(parse_array.shape)
+        if w < 0:
+            aug_parse_array[h:, :INPUT_SIZE[0]+w] = parse_array[:INPUT_SIZE[1]-h, -w:]
+        else:
+            aug_parse_array[h:, w:] = parse_array[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
+        parse_array = aug_parse_array
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
         head = (parse_array == 1).astype(np.float32) + \
@@ -112,6 +135,7 @@ class CFDataset(data.Dataset):
         face = (parse_array == 13).astype(np.float32)
 
         face = torch.from_numpy(face)
+        
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)
         pose_data = pose_label
@@ -129,8 +153,8 @@ class CFDataset(data.Dataset):
             one_map = Image.new('L', (W, H))
             draw = ImageDraw.Draw(one_map)
             if i in pose_data.keys():
-                pointx = pose_data[i][0]
-                pointy = pose_data[i][1]
+                pointx = pose_data[i][0]+w
+                pointy = pose_data[i][1]+h
             else:
                 pointx = -1
                 pointy = -1
@@ -147,9 +171,11 @@ class CFDataset(data.Dataset):
         size = (torch.sqrt(area)//(torch.rand(1)*0.3+1.2)).int()
 
         if 0 in pose_data.keys():
+            loc_x = pose_data[0][0]+w
+            loc_y = pose_data[0][1]+h
             head = image * head + (1 - head) * 0
             tmp = head.clone()
-            tmp[:,pose_data[0][1]-size:pose_data[0][1]+size,pose_data[0][0]-size:pose_data[0][0]+size] = 0
+            tmp[:,loc_y-size:loc_y+size,loc_x-size:loc_x+size] = 0
             face = head * np.where(tmp==0,1,0)
             face = face.type(torch.FloatTensor)
             lack = lack + face
