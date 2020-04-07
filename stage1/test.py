@@ -22,7 +22,7 @@ from Models.UNetS3 import *
 from Models.LossS3 import *
 from Models.net_canny import *
 from Models.loss_canny import *
-from dataloader_test import *
+from dataloader_viton import *
 
 PYRAMID_HEIGHT = 5
 IS_TOPS = True
@@ -30,7 +30,7 @@ IS_TOPS = True
 if IS_TOPS:
     stage = 'tops'
     in_channels = 22
-    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_10_2.pth'
+    checkpoint = '/home/fashionteam/ClothFlow/stage1/checkpoints/tops/checkpoint_3_2.pth'
 else:
     stage = 'bottoms'
     in_channels = 2
@@ -46,7 +46,7 @@ else:
 dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
 runs = osp.join(PWD,'stage1','runs','test',stage)
-result_dir = osp.join(PWD,'result_viton/warped_mask_last3/',stage)
+result_dir = osp.join(PWD,'result_viton/warped_mask_last1/',stage)
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -59,8 +59,8 @@ def get_opt():
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
-    parser.add_argument("--radius", type=int, default = 3)
-    parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
@@ -79,7 +79,7 @@ def test(opt):
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
     model.cuda()
-    model.train()
+    model.eval()
     
     test_dataset = CFDataset(opt, is_tops=IS_TOPS)
     test_loader = CFDataLoader(opt, test_dataset)
@@ -97,13 +97,14 @@ def test(opt):
         inputs = test_loader.next_batch()
         
         con_cloth = inputs['cloth'].cuda()
-        con_cloth_mask = inputs['cloth_mask'].cuda()
+        con_cloth_mask = inputs["cloth_mask"].cuda()
         name = inputs['name']
-        # tar_body_mask = inputs['tar_body_mask'].cuda()
+        tar_cloth = inputs['crop_cloth'].cuda()
         tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
         pose = inputs['pose'].cuda()
+        seg = inputs['seg'].cuda()
 
-        result = model(pose, con_cloth, con_cloth_mask, IS_TOPS)
+        result = model(pose, seg, con_cloth_mask)
 
         loss = rLoss(result, tar_cloth_mask)
 
@@ -121,11 +122,11 @@ def test(opt):
             print('Train [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 (step+1) * 1, len(test_loader.dataset)//opt.batch_size + 1,
                 100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
-        # result = (result > -0.9).type(torch.float32)
+        result = (result > -0.9).type(torch.float32)
         save_images(result, name, opt.result_dir)
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
 
     opt = get_opt()
     test(opt)

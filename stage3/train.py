@@ -148,7 +148,7 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_del_kkk_1_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_real_fin_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'

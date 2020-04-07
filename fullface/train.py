@@ -18,12 +18,12 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3 import *
-from Models.LossS3 import *
-from dataloader_MVC import *
+from Models.UNetS3_pt import *
+from Models.LossS3_pt import *
+from dataloader_train import *
 
 EPOCHS = 200
-PYRAMID_HEIGHT = 5
+PYRAMID_HEIGHT = 4
 IS_TOPS = True
 
 if IS_TOPS:
@@ -34,7 +34,7 @@ if IS_TOPS:
 else:
     stage = 'bottomqs'
     in_channels = 9
-dataroot = '/home/fashionteam/dataset_MVC_tops/'
+dataroot = '/home/fashionteam/viton_512/'
 dataroot_mask = osp.join(PWD,"result_viton/warped_mask",stage)
 dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth",stage)
 datalist = 'train_MVC'+stage+'_pair.txt'
@@ -126,7 +126,7 @@ def train(opt):
     test_loader = CFDataLoader(get_test_opt(), test_dataset)
 
     writer = SummaryWriter()
-    rLoss = renderLoss()
+    rLoss = VGG19Loss()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
@@ -156,17 +156,17 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_2_%d.pth' % (cnt)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_3_%d.pth' % (cnt)))
         
-        inputs = test_loader.next_batch()
-        lack = inputs['lack'].cuda()
-        full = inputs['full'].cuda()
-        face = inputs['face'].cuda()
+        # inputs = test_loader.next_batch()
+        # lack = inputs['lack'].cuda()
+        # full = inputs['full'].cuda()
+        # face = inputs['face'].cuda()
 
-        result = model(lack)
+        # result = model(lack)
 
-        loss, percept, style = rLoss(result, full)
-        print("Loss : %.2f\n", loss)
+        # loss, percept, style = rLoss(result, full)
+        # print("Loss : %.2f\n", loss)
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '1,2,3'

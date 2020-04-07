@@ -18,15 +18,15 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3 import *
-from Models.LossS3 import *
+from Models.UNetS3_pt import *
+from Models.LossS3_pt import *
 from dataloader_test import *
 
-PYRAMID_HEIGHT = 5
+PYRAMID_HEIGHT = 4
 
 stage = 'tops'
 in_channels = 3
-checkpoint = 'fullface/checkpoints/ck11.pth'
+checkpoint = 'fullface/checkpoints/checkpoint_3_22000.pth'
 
 dataroot = '/home/fashionteam/final_test/'
 result_dir = '/home/fashionteam/final_test/'
@@ -92,7 +92,6 @@ def test(opt):
     test_loader = CFDataLoader(opt, test_dataset)
 
     writer = SummaryWriter()
-    rLoss = renderLoss()
 
     if not osp.isdir(opt.result_dir):
         os.makedirs(opt.result_dir)

@@ -244,7 +244,7 @@ class UNet(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-    def forward(self, a,b, c, d=None,is_tops=True):
+    def forward(self, a,b, c, d=None):
         encoder_outs = []
         try:
             len(d)

@@ -46,7 +46,7 @@ class CFDataset(data.Dataset):
         
         # load data list
         #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/stage1/","stage1_dat.pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_train_fullface.pkl"))
 
     def name(self):
         return "CFDataset"
@@ -90,23 +90,23 @@ class CFDataset(data.Dataset):
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
-        path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
+        # path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
 
-        image_mask = Image.open(path_image_mask)
-        image_mask = (np.array(image_mask) > 25).astype(np.float32)
-        aug_image_mask = np.zeros(image_mask.shape)
-        if w < 0:
-            aug_image_mask[h:, :INPUT_SIZE[0]+w] = image_mask[:INPUT_SIZE[1]-h, -w:]
-        else:
-            aug_image_mask[h:, w:] = image_mask[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
-        image_mask = aug_image_mask.astype(np.float32)
+        # image_mask = Image.open(path_image_mask)
+        # image_mask = (np.array(image_mask) > 25).astype(np.float32)
+        # aug_image_mask = np.zeros(image_mask.shape)
+        # if w < 0:
+        #     aug_image_mask[h:, :INPUT_SIZE[0]+w] = image_mask[:INPUT_SIZE[1]-h, -w:]
+        # else:
+        #     aug_image_mask[h:, w:] = image_mask[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
+        # image_mask = aug_image_mask.astype(np.float32)
         
         # kernel = np.ones((3,3), np.uint8)
         # image_mask = cv2.erode(image_mask, kernel, iterations=4)
         # image_mask = cv2.dilate(image_mask, kernel, iterations=2)
 
-        image_mask = torch.from_numpy(image_mask)
-        image_mask = image_mask.unsqueeze_(0)
+        # image_mask = torch.from_numpy(image_mask)
+        # image_mask = image_mask.unsqueeze_(0)
 
         # segment processing
         seg = Image.open(path_seg)
@@ -125,6 +125,7 @@ class CFDataset(data.Dataset):
                  (parse_array == 2).astype(np.float32) + \
                  (parse_array == 4).astype(np.float32) + \
                  (parse_array == 13).astype(np.float32)
+        neck =  (parse_array == 10).astype(np.float32)
         cloth = (parse_array == 5).astype(np.float32) + \
                   (parse_array == 6).astype(np.float32) + \
                   (parse_array == 7).astype(np.float32)
@@ -165,10 +166,12 @@ class CFDataset(data.Dataset):
             one_map = self.transform_1ch(one_map)
             pose_map[i] = one_map[0]
 
-        full = image * image_mask
-        lack = image * (shape - head)
+        full = image * shape
+        remov = head + neck
+        remov[remov > 0] = 1
+        lack = image * (shape - remov)
         area = torch.mean(face) * INPUT_SIZE[0] * INPUT_SIZE[1]
-        size = (torch.sqrt(area)//(torch.rand(1)*0.3+1.2)).int()
+        size = (torch.sqrt(area)//(torch.rand(1)*0.3+0.9)).int()
 
         if 0 in pose_data.keys():
             loc_x = pose_data[0][0]+w

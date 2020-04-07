@@ -25,21 +25,21 @@ from Models.loss_canny import *
 from dataloader_viton import *
 
 
-EPOCHS = 200
+EPOCHS = 10
 PYRAMID_HEIGHT = 5
 NUM_STAGE = str(1)
 IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 23
+    in_channels = 22
 else:
     stage = 'bottoms'
     in_channels = 2
 dataroot = '/home/fashionteam/viton_512/'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint = None
-# checkpoint = 'stage1/checkpoints/tops/checkpoint_10_19500.pth'
+# checkpoint = 'stage1/checkpoints/tops/checkpoint_1_0.pth'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,'runs','train',stage)
 
@@ -103,17 +103,15 @@ def train(opt):
             name = inputs['name']
             tar_cloth = inputs['crop_cloth'].cuda()
             tar_cloth_mask = inputs['crop_cloth_mask'].cuda()
-            tar_body_mask = inputs['tar_body_mask'].cuda()
             pose = inputs['pose'].cuda()
-            arms_mask = inputs['arms_mask'].cuda()
-
-            result = model(pose, con_cloth, con_cloth_mask, tar_body_mask, IS_TOPS)
+            seg = inputs['seg'].cuda()
+            
+            result = model(pose, seg, con_cloth_mask)
             # result = model(con_cloth, con_cloth_mask, pose, IS_TOPS)
 
             optimizer.zero_grad()
 
-            r_loss = rLoss(result, tar_cloth_mask)
-            loss = r_loss
+            loss = rLoss(result, tar_cloth_mask)
 
             loss.backward()
             optimizer.step()
@@ -123,10 +121,8 @@ def train(opt):
                 writer.add_images("mask", con_cloth_mask, cnt)
                 writer.add_images("GT", tar_cloth_mask, cnt)
                 writer.add_images('tar_cloth', tar_cloth, cnt)
-                writer.add_images("tar_body", tar_body_mask, cnt)
                 writer.add_images("Result", result, cnt)
                 writer.add_scalar("loss/loss", loss, cnt)
-                writer.add_scalar("loss/r_loss", r_loss, cnt)
                 writer.close()
 
             # if (step+1) % opt.display_count == 0:
@@ -136,10 +132,10 @@ def train(opt):
 
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_11_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_3_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "1,2,3"
 
     opt = get_opt()
     train(opt)

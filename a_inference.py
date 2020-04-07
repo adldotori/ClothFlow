@@ -48,16 +48,16 @@ def masksave(result, path):
 
 def get_opt():  
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="/home/fashionteam/all")
+    parser.add_argument("--dataroot", default="/home/fashionteam/u_test_512")
     parser.add_argument("--mode", default = "all") # mode = all | one
     parser.add_argument("--name", default = "raw_0") # valid if mode == one
     parser.add_argument("--version", default = "viton") # version = MVC | vitons
     parser.add_argument("--is_top", default = True) # valid if version == MVC
     parser.add_argument("--PYRAMID_HEIGHT", default = 5)
-    parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_10_2.pth")
+    parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_2_0.pth")
     # parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_7_5000.pth")
     parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_tmp_1.pth")
-    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_del_kkk_1_2.pth")
+    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_final_0.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth")
     parser.add_argument("--result", default = "test_u1")
     parser.add_argument("--height", default = 512)
@@ -73,15 +73,12 @@ def load_inputs(opt,name):
     transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
 
     data_path = osp.join(opt.dataroot,name)
-    path_cloth = osp.join(opt.dataroot,"cloth-1.jpg")
+    path_cloth = osp.join(opt.dataroot,'cloth', "000004_1.jpg")
     path_image = osp.join(data_path,"image.png")
-    path_cloth_mask = osp.join(opt.dataroot,"cloth_mask-1.jpg")
+    path_cloth_mask = osp.join(opt.dataroot, 'cloth-mask', "000004_1.jpg")
     path_segment = osp.join(data_path,"segment.png")
     path_pose_pkl = osp.join(data_path,"pose.pkl")
     # path_mask = osp.join(data_path,"image_mask.jpg")
-    if opt.version == "MVC":
-        path_pose_png = osp.join(data_path,"pose.png")
-        path_segment_vis = osp.join(data_path,"segment_vis.png")
 
     cloth = Image.open(path_cloth).convert('RGB')
     image = Image.open(path_image).convert('RGB')
@@ -103,6 +100,44 @@ def load_inputs(opt,name):
 
     seg = Image.open(path_segment)
     parse_array = np.array(seg)
+    
+    shape = (parse_array > 0).astype(np.float32)  # condition body shape
+    background = (parse_array == 0).astype(np.float32)
+    hair = (parse_array == 2).astype(np.float32)
+    face = (parse_array == 13).astype(np.float32)
+    hat = (parse_array == 1).astype(np.float32)
+    tops = (parse_array == 5).astype(np.float32) + \
+                (parse_array == 6).astype(np.float32) + \
+                (parse_array == 7).astype(np.float32) + \
+                (parse_array == 15).astype(np.float32) + \
+                (parse_array == 14).astype(np.float32) + \
+                (parse_array == 10).astype(np.float32)  
+    bottoms = (parse_array == 8).astype(np.float32) + \
+                (parse_array == 9).astype(np.float32) + \
+                (parse_array == 12).astype(np.float32) + \
+                (parse_array == 16).astype(np.float32) + \
+                (parse_array == 17).astype(np.float32) + \
+                (parse_array == 18).astype(np.float32) + \
+                (parse_array == 19).astype(np.float32)
+    cloth = (parse_array == 5).astype(np.float32) + \
+                (parse_array == 6).astype(np.float32) + \
+                (parse_array == 7).astype(np.float32)
+
+    background = torch.from_numpy(background)
+    hair = torch.from_numpy(hair)
+    face = torch.from_numpy(face)
+    hat = torch.from_numpy(hat)
+    tops = torch.from_numpy(tops)
+    bottoms = torch.from_numpy(bottoms)
+    cloth = torch.from_numpy(cloth)
+
+    seg_num = 3
+    seg_map = torch.zeros(seg_num, H, W)
+    seg_map[0] = hair
+    seg_map[1] = face
+    seg_map[2] = bottoms
+    seg_map = seg_map.type(torch.float32)
+
     shape = (parse_array > 0).astype(np.float32)  # condition body shape
     head = (parse_array == 1).astype(np.float32) + \
                 (parse_array == 2).astype(np.float32) + \
@@ -117,7 +152,7 @@ def load_inputs(opt,name):
                 (parse_array == 12).astype(np.float32) + \
                 (parse_array == 12).astype(np.float32) + \
                 (parse_array == 12).astype(np.float32)
-    
+
     head = torch.from_numpy(head)
     cloth = torch.from_numpy(cloth)
     arms = torch.from_numpy(arms)
@@ -177,7 +212,7 @@ def load_inputs(opt,name):
         'crop_pants': crop_pants,
         'crop_arms': crop_arms,
         'arms': arms,
-        'head': head,
+        'seg': seg_map,
     }
     return results
     
@@ -198,7 +233,7 @@ def main():
     #device = torch.device("cuda:2")
     #model2.to(device)
     model2 = nn.DataParallel(model2)
-    model3 = M3.UNet(opt,24,5)
+    model3 = M3.UNet(opt,27,5)
     model3.eval()
     #device = torch.device("cuda:2")
     #model3.to(device)
@@ -216,7 +251,7 @@ def main():
     set_requires_grad(model_CN,False)
 
     if opt.mode == "all":
-        names = [i for i in os.listdir(opt.dataroot) if osp.isdir(osp.join(opt.dataroot,i))]
+        names = [i for i in os.listdir(opt.dataroot) if i[0] != 'c']
     elif opt.mode == "one":
         names = [opt.name]
     else:
@@ -234,6 +269,8 @@ def main():
         arms = batch_cuda(inputs['arms'])
         head = batch_cuda(inputs['head'])
         pants = batch_cuda(inputs['pants'])
+        seg = batch_cuda(inputs['seg'])
+        shape = batch_cuda(inputs['shape'])
 
         ori_cloth = cloth
 
@@ -249,7 +286,7 @@ def main():
         # mask = mask.unsqueeze_(0)
 
         # target_mask = model1(target_pose, cloth, cloth_mask, mask,  opt.is_top)
-        target_mask = model1(target_pose, cloth, cloth_mask , opt.is_top)
+        target_mask = model1(target_pose, seg, cloth_mask , opt.is_top)
         target_mask = (target_mask > -0.9).type(torch.float32)
         
         target_mask = target_mask.cpu().numpy()
@@ -285,16 +322,16 @@ def main():
         warp_cloth = warp_cloth * warp_mask + (1 - warp_mask)
         imsave(warp_cloth,osp.join(opt.result,name,"stage2.jpg"))
 
-        # answer = answer * mask + (1 - mask) * 0
-        # off_mask = target_mask_real + arms + warp_mask
-        # off_mask[off_mask > 1] = 1
-        # off_cloth = answer * (1- off_mask) + off_mask
+        answer = answer * shape + (1 - shape) * 0
+        off_mask = target_mask_real + arms + warp_mask
+        off_mask[off_mask > 1] = 1
+        off_cloth = answer * (1- off_mask) + off_mask
 
-        remain = head + pants
-        remain[remain>0] = 1
-        arms_mask = torch.where(warp_mask>0, torch.zeros(1).cuda(), arms)
-        image_arms = answer * arms + (1 - arms) * 0
-        off_cloth = answer * remain + (1 - remain) * 0 + image_arms + cloth_mask
+        # remain = head + pants
+        # remain[remain>0] = 1
+        # arms_mask = torch.where(warp_mask>0, torch.zeros(1).cuda(), arms)
+        # image_arms = answer * arms + (1 - arms) * 0
+        # off_cloth = answer * remain + (1 - remain) * 0 + image_arms + cloth_mask
 
         imsave(off_cloth,osp.join(opt.result,name,"off_cloth.jpg"))
         imsave(answer, osp.join(opt.result, name, "image.jpg"))
@@ -302,20 +339,20 @@ def main():
         
         warped = warp_cloth
         pose = batch_cuda(inputs['pose'])
-        # head = batch_cuda(inputs['head'])
+        head = batch_cuda(inputs['head'])
         # pants = batch_cuda(inputs['crop_pants'])
 
         # imsave(head, osp.join(opt.result, name,"head.jpg"))
         # imsave(pants, osp.join(opt.result, name, "pants.jpg"))
 
-        result = model3(pose,warped,off_cloth)
+        result = model3(pose,warped,off_cloth,head)
 
-        # all_mask = target_mask
-        # all_mask[all_mask > 0] = 1
-        # result = result * all_mask + (1 - all_mask) * 0
+        all_mask = target_mask + shape
+        all_mask[all_mask > 0] = 1
+        result = result * all_mask + (1 - all_mask) * 0
 
         imsave(result, osp.join(opt.result,name,"result.jpg"))
 
 if __name__ == "__main__":
-    os.environ['CUDA_VISIBLE_DEVICES'] = "3"
+    os.environ['CUDA_VISIBLE_DEVICES'] = "0"
     main()

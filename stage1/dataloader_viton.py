@@ -40,7 +40,7 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/stage1","stage1_dat.pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_train.pkl"))
         # self.image_files = os.listdir('/home/fashionteam/')
 
     def name(self):
@@ -75,8 +75,10 @@ class CFDataset(data.Dataset):
         image = self.transform(image)
 
         aug_image = torch.zeros(image.shape)
-        w = random.randint(-150,150)
-        h = random.randint(0,200)
+        # w = random.randint(-150,150)
+        # h = random.randint(0,200)
+        w = 0
+        h = 0
         if w < 0:
             aug_image[:, h:, :INPUT_SIZE[0]+w] = image[:, :INPUT_SIZE[1]-h, -w:]
         else:
@@ -85,7 +87,6 @@ class CFDataset(data.Dataset):
 
         # parsing and pose path
         path_seg = osp.join(self.data_path, "image-seg", name+"_0.png")
-        path_mask = osp.join(self.data_path, "image-mask", name+"_0.png")
         path_pose = osp.join(self.data_path, "pose_pkl",name+"_0.pkl")
 
         # segment processing
@@ -99,39 +100,49 @@ class CFDataset(data.Dataset):
             aug_parse_array[h:, w:] = parse_array[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
         parse_array = aug_parse_array
 
-        mask = Image.open(path_mask)
-        mask_array = np.array(mask)
-        aug_mask_array = np.zeros(mask_array.shape)
-        if w < 0:
-            aug_mask_array[h:, :INPUT_SIZE[0]+w] = mask_array[:INPUT_SIZE[1]-h, -w:]
-        else:
-            aug_mask_array[h:, w:] = mask_array[:INPUT_SIZE[1]-h, :INPUT_SIZE[0]-w]
-        mask_array = aug_mask_array
-
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
-        head = (parse_array == 1).astype(np.float32) + \
-                 (parse_array == 2).astype(np.float32) + \
-                 (parse_array == 4).astype(np.float32) + \
-                 (parse_array == 13).astype(np.float32)
+        # background = (parse_array == 0).astype(np.float32)
+        hair = (parse_array == 2).astype(np.float32)
+        face = (parse_array == 13).astype(np.float32)
+        hat = (parse_array == 1).astype(np.float32)
+        tops = (parse_array == 5).astype(np.float32) + \
+                  (parse_array == 6).astype(np.float32) + \
+                  (parse_array == 7).astype(np.float32) + \
+                  (parse_array == 15).astype(np.float32) + \
+                  (parse_array == 14).astype(np.float32) + \
+                  (parse_array == 10).astype(np.float32)  
+        bottoms = (parse_array == 8).astype(np.float32) + \
+                  (parse_array == 9).astype(np.float32) + \
+                  (parse_array == 12).astype(np.float32) + \
+                  (parse_array == 16).astype(np.float32) + \
+                  (parse_array == 17).astype(np.float32) + \
+                  (parse_array == 18).astype(np.float32) + \
+                  (parse_array == 19).astype(np.float32)
         cloth = (parse_array == 5).astype(np.float32) + \
                   (parse_array == 6).astype(np.float32) + \
                   (parse_array == 7).astype(np.float32)
-        arms = (parse_array == 15).astype(np.float32) + \
-                (parse_array == 14).astype(np.float32)
 
-        mask = (mask_array > 25).astype(np.float32)
-
-        head = torch.from_numpy(head)
+        # background = torch.from_numpy(background)
+        hair = torch.from_numpy(hair)
+        face = torch.from_numpy(face)
+        hat = torch.from_numpy(hat)
+        tops = torch.from_numpy(tops)
+        bottoms = torch.from_numpy(bottoms)
         cloth = torch.from_numpy(cloth)
-        arms = torch.from_numpy(arms)
-        mask = torch.from_numpy(mask)
+
+        seg_num = 3
+        seg_map = torch.zeros(seg_num, H, W)
+        # seg_map[0] = background
+        seg_map[0] = hair
+        seg_map[1] = face
+        seg_map[2] = bottoms
+        # seg_map[3] = bottoms
+        seg_map = seg_map.type(torch.float32)
 
         crop_cloth = image * cloth + (1 - cloth)
         cloth_ = cloth_ * cloth_mask + (1 - cloth_mask)
 
         cloth = cloth.unsqueeze_(0)
-        mask = mask.unsqueeze_(0)
-        arms = arms.unsqueeze_(0)
         
         with open(path_pose, 'rb') as f:
             pose_label = pickle.load(f)
@@ -164,8 +175,7 @@ class CFDataset(data.Dataset):
             'name' : name,
             'crop_cloth' : crop_cloth,
             'crop_cloth_mask': cloth,
-            'arms_mask': arms,
-            'tar_body_mask': mask,
+            'seg': seg_map
             }
         return result
 
