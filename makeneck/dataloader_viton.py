@@ -83,7 +83,7 @@ class CFDataset(data.Dataset):
 
         # segment processing
         seg = Image.open(path_seg)
-        parse = self.transform_1ch(seg)
+        # parse = self.transform_1ch(seg)
         parse_array = np.array(seg)
 
         shape = (parse_array > 0).astype(np.float32)  # condition body shape
@@ -100,8 +100,15 @@ class CFDataset(data.Dataset):
         
         pants = (parse_array == 9).astype(np.float32) + \
                   (parse_array == 12).astype(np.float32)
+        neck = (parse_array == 10).astype(np.float32)
+        parse_array[parse_array == 10] = 0
+        parse_array = parse_array.astype(np.float32)
+        parse_array = torch.from_numpy(parse_array)
+        parse_array = parse_array.unsqueeze_(0)
 
-        nonneck = image * shape + (1 - shape) * 0
+        image = image * shape + (1 - shape) * 0
+        nonneck = shape - neck
+        nonneck = image * nonneck + (1 - nonneck) * 0
         head = torch.from_numpy(head)
         crop_head = image * head + (1 - head)
 
@@ -137,7 +144,7 @@ class CFDataset(data.Dataset):
         result = {
             'image': image,  # source image
             'nonneck' : nonneck,
-            'parse': parse,
+            'parse': parse_array,
             'pose': pose_map,
             'head': crop_head,
             }

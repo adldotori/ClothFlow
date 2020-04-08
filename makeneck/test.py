@@ -27,16 +27,16 @@ PYRAMID_HEIGHT = 5
 if IS_TOPS:
     stage = 'tops'
     in_channels = 22
-    checkpoint = 'stage3/checkpoints/ck_745.pth'
+    checkpoint = 'makeneck/checkpoints/checkpoint_2_2.pth'
 else:
     stage = 'bottoms'
     in_channels = 9
     checkpoint = 'backup/stage3_bot_512.pth'
 
-dataroot = '/home/fashionteam/all'
+dataroot = '/home/fashionteam/all_'
 datalist = 'train_MVC'+stage+'_pair.txt'
 exp = 'train/'+stage
-result_dir = '/home/fashionteam/all'
+result_dir = '/home/fashionteam/all_'
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -78,13 +78,13 @@ def test(opt):
     load_checkpoint(model, opt.checkpoint)
 
     model.cuda()
-    model.train()
+    model.eval()
 
     test_dataset = CFDataset(opt)
     test_loader = CFDataLoader(opt, test_dataset)
 
     writer = SummaryWriter()
-    rLoss = renderLoss()
+    rLoss = nn.L1Loss() #renderLoss()
 
     if not osp.isdir(opt.result_dir):
         os.makedirs(opt.result_dir)
@@ -102,7 +102,7 @@ def test(opt):
         head = inputs['head'].cuda()
         name = inputs['name']
 
-        result = model(pose, nonneck, parse)
+        result = model(pose, parse, nonneck)
 
         # WriteImage(writer,"GT", answer, cnt)
         # WriteImage(writer,"warped", warped, cnt)
@@ -110,7 +110,7 @@ def test(opt):
         # WriteImage(writer,"off_cloth", off_cloth, cnt)
         # WriteImage(writer,"Result", result, cnt)
 
-        loss, percept, style = rLoss(result,answer)
+        loss = rLoss(result,answer)
 
         if not TENSORBOARD:
             if cnt % opt.display_count == 0:
@@ -119,8 +119,8 @@ def test(opt):
                     100. * (step+1) / (len(test_loader.dataset)//opt.batch_size + 1), loss.item()))
 
         writer.add_scalar("loss/loss", loss, cnt)
-        writer.add_scalar("loss/percept", percept, cnt)
-        writer.add_scalar("loss/style", style, cnt)
+        # writer.add_scalar("loss/percept", percept, cnt)
+        # writer.add_scalar("loss/style", style, cnt)
 
         writer.close()
 

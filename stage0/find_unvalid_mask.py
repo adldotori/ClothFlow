@@ -50,4 +50,11 @@ print(asdf)
 
 # print(len(image_files))
 print(len(cp_list))
-save_pkl('/home/fashionteam/ClothFlow/viton_real_train.pkl', list)
+
+last = []
+a = load_pkl('/home/fashionteam/ClothFlow/viton_list_train.pkl')
+for image_ in list:
+    if image_ in a:
+        last.append(a)
+print(len(last))
+save_pkl('/home/fashionteam/ClothFlow/viton_real_train_pose.pkl', last)

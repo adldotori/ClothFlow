@@ -99,7 +99,7 @@ class Vgg19(nn.Module):
         self.style = 0
     
     def get_loss(self):
-        return self.percept
+        return self.loss
     
     def get_percept(self):
         return self.percept

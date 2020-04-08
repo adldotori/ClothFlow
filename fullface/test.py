@@ -22,11 +22,11 @@ from Models.UNetS3_pt import *
 from Models.LossS3_pt import *
 from dataloader_test import *
 
-PYRAMID_HEIGHT = 4
+PYRAMID_HEIGHT = 5
 
 stage = 'tops'
 in_channels = 3
-checkpoint = 'fullface/checkpoints/checkpoint_3_22000.pth'
+checkpoint = 'fullface/checkpoints/checkpoint_4_115000.pth'
 
 dataroot = '/home/fashionteam/final_test/'
 result_dir = '/home/fashionteam/final_test/'
@@ -115,7 +115,7 @@ def test(opt):
         save_images(result,['image_'],result_dir+name[0])
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "2"
 
     opt = get_opt()
     test(opt)

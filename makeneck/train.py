@@ -32,7 +32,7 @@ if IS_TOPS:
     stage = 'tops'
     in_channels = 22
     checkpoint = None
-    # checkpoint = 'makeneck/checkpoints/checkpoint_2.pth'
+    checkpoint = 'makeneck/checkpoints/checkpoint_2_2.pth'
 else:
     stage = 'bottomqs'
     in_channels = 9
@@ -48,7 +48,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=8)
+    parser.add_argument('-b', '--batch_size', type=int, default=6)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -58,7 +58,7 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 3)
     parser.add_argument("--grid_size", type=int, default = 5)
-    parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.00002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
@@ -84,15 +84,16 @@ def get_opt():
 def train(opt):
     model = UNet(opt, in_channels, PYRAMID_HEIGHT)
     model = nn.DataParallel(model)
-    # load_checkpoint(model, opt.checkpoint)
+    load_checkpoint(model, opt.checkpoint)
     model.cuda()
     model.train()
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
     train_dataset = CFDataset(opt)
     train_loader = CFDataLoader(opt, train_dataset)
 
     writer = SummaryWriter()
+    l1Loss = nn.L1Loss()
     rLoss = renderLoss()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
@@ -107,41 +108,31 @@ def train(opt):
             pose = inputs['pose'].cuda()
             head = inputs['head'].cuda()
 
-            result = model(pose, nonneck, parse)
+            result = model(pose, parse, nonneck)
             WriteImage(writer,"GT", answer, cnt)
             WriteImage(writer,"nonneck", nonneck, cnt)
             WriteImage(writer,"parse", parse, cnt)
             WriteImage(writer,"result", result, cnt)
             WriteImage(writer,"head", head, cnt)
 
-            write_images(writer,"GT", answer, cnt)
-            WriteImage(writer,"nonneck", nonneck, cnt)
-            WriteImage(writer,"parse", parse, cnt)
-            WriteImage(writer,"result", result, cnt)
-            WriteImage(writer,"head", head, cnt)
-
-            if epoch <= 0:
-                optimizer.zero_grad()
-                loss, percept, style = rLoss(result, head)
-                loss.backward()
-                optimizer.step()
-            else:
-                optimizer.zero_grad()
-                loss, percept, style = rLoss(result, answer)
-                loss.backward()
-                optimizer.step()
+            optimizer.zero_grad()
+            l1_ = l1Loss(result, answer)
+            loss_, percept, style = rLoss(result, answer)
+            loss = loss_ * 0.001 + l1_
+            loss.backward()
+            optimizer.step()
 
             writer.add_scalar("loss/loss", loss, cnt)
-            writer.add_scalar("loss/percept", percept, cnt)
-            writer.add_scalar("loss/style", style, cnt)
+            # writer.add_scalar("loss/percept", percept, cnt)
+            # writer.add_scalar("loss/style", style, cnt)
 
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_1_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_3_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
+    os.environ["CUDA_VISIBLE_DEVICES"]= '1,2,3'
 
     opt = get_opt()
     train(opt)

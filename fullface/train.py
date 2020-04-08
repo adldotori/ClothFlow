@@ -18,12 +18,12 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3_pt import *
-from Models.LossS3_pt import *
+from Models.UNetS3 import *
+from Models.LossS3 import *
 from dataloader_train import *
 
 EPOCHS = 200
-PYRAMID_HEIGHT = 4
+PYRAMID_HEIGHT = 5
 IS_TOPS = True
 
 if IS_TOPS:
@@ -82,7 +82,7 @@ def get_test_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=4)
+    parser.add_argument('-b', '--batch_size', type=int, default=5)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -126,7 +126,7 @@ def train(opt):
     test_loader = CFDataLoader(get_test_opt(), test_dataset)
 
     writer = SummaryWriter()
-    rLoss = VGG19Loss()
+    rLoss = nn.L1Loss() #renderLoss()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
@@ -145,18 +145,18 @@ def train(opt):
             WriteImage(writer,"result", result, cnt)
 
             optimizer.zero_grad()
-            loss, percept, style = rLoss(result, full)
+            loss = rLoss(result, full)
             loss.backward()
             optimizer.step()
 
             writer.add_scalar("loss/loss", loss, cnt)
-            writer.add_scalar("loss/percept", percept, cnt)
-            writer.add_scalar("loss/style", style, cnt)
+            # writer.add_scalar("loss/percept", percept, cnt)
+            # writer.add_scalar("loss/style", style, cnt)
 
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_3_%d.pth' % (cnt)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_4_%d.pth' % (cnt)))
         
         # inputs = test_loader.next_batch()
         # lack = inputs['lack'].cuda()
