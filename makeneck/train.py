@@ -32,7 +32,7 @@ if IS_TOPS:
     stage = 'tops'
     in_channels = 22
     checkpoint = None
-    checkpoint = 'makeneck/checkpoints/checkpoint_2_2.pth'
+    checkpoint = 'makeneck/checkpoints/checkpoint_3_0.pth'
 else:
     stage = 'bottomqs'
     in_channels = 9
@@ -48,7 +48,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=6)
+    parser.add_argument('-b', '--batch_size', type=int, default=5)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--datamode", default = "train")
@@ -118,7 +118,7 @@ def train(opt):
             optimizer.zero_grad()
             l1_ = l1Loss(result, answer)
             loss_, percept, style = rLoss(result, answer)
-            loss = loss_ * 0.001 + l1_
+            loss = loss_# * 0.001 + l1_
             loss.backward()
             optimizer.step()
 
@@ -129,7 +129,7 @@ def train(opt):
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_3_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_4_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '1,2,3'

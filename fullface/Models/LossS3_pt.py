@@ -312,7 +312,7 @@ class VGG19Loss(PerceptualLoss):
         self.dividor = 1
         self.feat_num = feat_num
 
-    def forward(self, output0, target0):
+    def forward(self, output0, target0, mask):
         """
         Forward
         assuming both output0 and target0 are in the range of [0, 1]
@@ -326,7 +326,7 @@ class VGG19Loss(PerceptualLoss):
         x = self.normalize_batch(output0, self.dividor)
 
         # L1 loss
-        l1_loss = self.l1_weight * (torch.abs(x - y).mean())
+        l1_loss = 6 * self.l1_weight * (torch.abs((x - y) * mask).mean()) + self.l1_weight * (torch.abs((x - y) * (1 - mask)).mean())
         vgg_loss = 0
         style_loss = 0
         smooth_loss = 0
@@ -373,5 +373,5 @@ class VGG19Loss(PerceptualLoss):
             )
 
         tot = l1_loss + vgg_loss + style_loss + smooth_loss
-        return tot, vgg_loss, style_loss
+        return tot, vgg_loss, style_loss, l1_loss
 

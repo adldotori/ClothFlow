@@ -11,6 +11,8 @@ import numpy as np
 import json
 import pickle
 import sys
+import cv2
+
 sys.path.append("..")
 # import neckmake
 
@@ -25,6 +27,20 @@ def load_pkl(name):
 
 def naming(file_name):
     return file_name[:-6]
+
+def conversion(array, erode, dilate):
+    if not 'numpy' in str(type(array)):
+        array = array.cpu().numpy()
+    array = array.squeeze()
+
+    kernel = np.ones((3,3), np.uint8)
+    array = cv2.erode(array, kernel, iterations=erode)
+    array = cv2.dilate(array, kernel, iterations=dilate)
+    
+    array = torch.from_numpy(array)
+    array = array.unsqueeze_(0)
+    # array = array.unsqueeze_(0)
+    return array
 
 class CFDataset(data.Dataset):
     """Dataset for CP-VTON.
@@ -44,7 +60,7 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = [i for i in os.listdir(self.root) if osp.isdir(osp.join(self.root, i))]
+        self.image_files = [i for i in os.listdir(self.root) if osp.isdir(osp.join(self.root, i)) and i[0] != 'c']
         # self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
 
     def name(self):
@@ -91,7 +107,9 @@ class CFDataset(data.Dataset):
         parse_array = parse_array.unsqueeze_(0)
 
         nonneck = image * shape + (1 - shape) * 0
-        head = torch.from_numpy(head)
+
+        # head = conversion(head, 4,0)
+        # head = torch.from_numpy(head)
         crop_head = image * head + (1 - head)
 
         with open(path_pose, 'rb') as f:
@@ -129,6 +147,7 @@ class CFDataset(data.Dataset):
             'parse': parse_array,
             'pose': pose_map,
             'head': crop_head,
+            'head_mask': head,
             'name': name,
             }
         return result

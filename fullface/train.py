@@ -19,7 +19,7 @@ import time
 sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
-from Models.LossS3 import *
+from Models.LossS3_pt import *
 from dataloader_train import *
 
 EPOCHS = 200
@@ -28,7 +28,7 @@ IS_TOPS = True
 
 if IS_TOPS:
     stage = 'tops'
-    in_channels = 3
+    in_channels = 21
     checkpoint = None
     # checkpoint = 'fullface/checkpoints/ck11.pth'
 else:
@@ -126,7 +126,7 @@ def train(opt):
     test_loader = CFDataLoader(get_test_opt(), test_dataset)
 
     writer = SummaryWriter()
-    rLoss = nn.L1Loss() #renderLoss()
+    rLoss = VGG19Loss() #renderLoss()
 
     for epoch in tqdm(range(EPOCHS), desc='EPOCH'):
         for step in tqdm(range(len(train_loader.dataset)//opt.batch_size + 1), desc='step'):
@@ -137,21 +137,25 @@ def train(opt):
             lack = inputs['lack'].cuda()
             full = inputs['full'].cuda()
             face = inputs['face'].cuda()
+            mask = inputs['mask'].cuda()
+            pose = inputs['pose'].cuda()
 
-            result = model(lack)
-            WriteImage(writer,"lack", lack, cnt)
+            result = model(pose,lack)
+            WriteImage(writer,"lack", lack, cnt,1)
             WriteImage(writer,"full", full, cnt)
             WriteImage(writer,"face", face, cnt)
+            WriteImage(writer,"mask", mask, cnt)
             WriteImage(writer,"result", result, cnt)
 
             optimizer.zero_grad()
-            loss = rLoss(result, full)
+            loss, percept, style, l1 = rLoss(result, full, mask)
             loss.backward()
             optimizer.step()
 
             writer.add_scalar("loss/loss", loss, cnt)
-            # writer.add_scalar("loss/percept", percept, cnt)
-            # writer.add_scalar("loss/style", style, cnt)
+            writer.add_scalar("loss/percept", percept, cnt)
+            writer.add_scalar("loss/style", style, cnt)
+            writer.add_scalar("loss/l1", l1, cnt)
 
             writer.close()
 

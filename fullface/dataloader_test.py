@@ -44,7 +44,7 @@ class CFDataset(data.Dataset):
         self.transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
         
         # load data list
-        self.image_files = [i for i in os.listdir(self.root) if osp.isdir(osp.join(self.root, i))]
+        self.image_files = [i for i in os.listdir(self.root) if osp.isdir(osp.join(self.root, i)) and i[0]!='c']
         # self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
 
     def name(self):
@@ -133,6 +133,7 @@ class CFDataset(data.Dataset):
         result = {
             'lack': image,
             'name': name,
+            'pose': pose_map,
             }
         return result
 

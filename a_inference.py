@@ -45,10 +45,23 @@ def masksave(result, path):
 	img = img.detach().numpy().astype('uint8')
 	Image.fromarray(img).save(path)
 
+def conversion(array, erode, dilate):
+    if not 'numpy' in str(type(array)):
+        array = array.cpu().numpy()
+    array = array.squeeze()
+
+    kernel = np.ones((3,3), np.uint8)
+    array = cv2.erode(array, kernel, iterations=erode)
+    array = cv2.dilate(array, kernel, iterations=dilate)
+    
+    array = torch.from_numpy(array)
+    array = array.unsqueeze_(0)
+    # array = array.unsqueeze_(0)
+    return array
 
 def get_opt():  
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="/home/fashionteam/u_test_512")
+    parser.add_argument("--dataroot", default="/home/fashionteam/dataset/body_face_2")
     parser.add_argument("--mode", default = "all") # mode = all | one
     parser.add_argument("--name", default = "raw_0") # valid if mode == one
     parser.add_argument("--version", default = "viton") # version = MVC | vitons
@@ -57,9 +70,9 @@ def get_opt():
     parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_2_0.pth")
     # parser.add_argument("--stage1_model_pth", default = "stage1/checkpoints/tops/checkpoint_7_5000.pth")
     parser.add_argument("--stage2_model_pth", default = "stage2/checkpoints/tops/checkpoint_tmp_1.pth")
-    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_final_0.pth")
+    parser.add_argument("--stage3_model_pth", default = "stage3/checkpoints/train/tops/checkpoint_real_fin_0.pth")
     parser.add_argument("--clothnormalize_model_pth", default = "stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth")
-    parser.add_argument("--result", default = "test_u1")
+    parser.add_argument("--result", default = "test_bod_face3")
     parser.add_argument("--height", default = 512)
     parser.add_argument("--width", default = 512)
 
@@ -72,11 +85,13 @@ def load_inputs(opt,name):
     transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     transform_1ch = transforms.Compose([transforms.ToTensor(),transforms.Normalize([0.5], [0.5])])
 
+    clothes = os.listdir(osp.join(opt.dataroot, 'cloth'))
+    num_cloth = 3
     data_path = osp.join(opt.dataroot,name)
-    path_cloth = osp.join(opt.dataroot,'cloth', "000004_1.jpg")
-    path_image = osp.join(data_path,"image.png")
-    path_cloth_mask = osp.join(opt.dataroot, 'cloth-mask', "000004_1.jpg")
-    path_segment = osp.join(data_path,"segment.png")
+    path_cloth = osp.join(opt.dataroot,'cloth', clothes[num_cloth])
+    path_image = osp.join(data_path,"image_.jpg")
+    path_cloth_mask = osp.join(opt.dataroot, 'cloth-mask', clothes[num_cloth])
+    path_segment = osp.join(data_path,"segment_.png")
     path_pose_pkl = osp.join(data_path,"pose.pkl")
     # path_mask = osp.join(data_path,"image_mask.jpg")
 
@@ -149,10 +164,13 @@ def load_inputs(opt,name):
     arms = (parse_array == 15).astype(np.float32) + \
                 (parse_array == 14).astype(np.float32)
     pants = (parse_array == 9).astype(np.float32) + \
-                (parse_array == 12).astype(np.float32) + \
-                (parse_array == 12).astype(np.float32) + \
                 (parse_array == 12).astype(np.float32)
-
+    
+    # print(head.shape)
+    # print(np.mean(head))
+    # head = conversion(head,4,2)
+    # print(np.mean(head))
+    # print(head.shape)
     head = torch.from_numpy(head)
     cloth = torch.from_numpy(cloth)
     arms = torch.from_numpy(arms)
@@ -167,6 +185,9 @@ def load_inputs(opt,name):
     crop_arms = image * arms + (1-arms)
     crop_pants = (image * pants + (1-pants))
 
+    remain = head + pants
+    remain[remain>0]=1
+    off_cloth = image * remain + (1 - remain) * 0
     with open(path_pose_pkl, 'rb') as f:
         pose_label = pickle.load(f)
     pose_data = pose_label
@@ -200,19 +221,20 @@ def load_inputs(opt,name):
         'cloth' : cloth_,
         'cloth_mask': cloth_mask,
         'image': image,  # source image
-        'head': crop_head,# cropped head from source image
+        'head': head,# cropped head from source image
         'pose': pose_map,#pose map
         'shape': shape,
         'upper_mask': cloth,# cropped cloth mask
         'crop_cloth': crop_cloth,#cropped cloth
         'crop_cloth_mask' : cloth,#cropped cloth mask
         'name' : name,
-        # 'off_cloth': off_cloth,#source image - cloth
+        'off_cloth': off_cloth,#source image - cloth
         'pants': pants,
         'crop_pants': crop_pants,
         'crop_arms': crop_arms,
         'arms': arms,
         'seg': seg_map,
+        'crop_head': crop_head,
     }
     return results
     
@@ -233,7 +255,7 @@ def main():
     #device = torch.device("cuda:2")
     #model2.to(device)
     model2 = nn.DataParallel(model2)
-    model3 = M3.UNet(opt,27,5)
+    model3 = M3.UNet(opt,24,5)
     model3.eval()
     #device = torch.device("cuda:2")
     #model3.to(device)
@@ -271,6 +293,7 @@ def main():
         pants = batch_cuda(inputs['pants'])
         seg = batch_cuda(inputs['seg'])
         shape = batch_cuda(inputs['shape'])
+        off_cloth = batch_cuda(inputs['off_cloth'])
 
         ori_cloth = cloth
 
@@ -322,10 +345,10 @@ def main():
         warp_cloth = warp_cloth * warp_mask + (1 - warp_mask)
         imsave(warp_cloth,osp.join(opt.result,name,"stage2.jpg"))
 
-        answer = answer * shape + (1 - shape) * 0
-        off_mask = target_mask_real + arms + warp_mask
-        off_mask[off_mask > 1] = 1
-        off_cloth = answer * (1- off_mask) + off_mask
+        # answer = answer * shape + (1 - shape) * 0
+        # off_mask = target_mask_real + arms + warp_mask
+        # off_mask[off_mask > 1] = 1
+        # off_cloth = answer * (1- off_mask) + off_mask
 
         # remain = head + pants
         # remain[remain>0] = 1
@@ -340,17 +363,19 @@ def main():
         warped = warp_cloth
         pose = batch_cuda(inputs['pose'])
         head = batch_cuda(inputs['head'])
+
+        crop_head = batch_cuda(inputs['crop_head'])
         # pants = batch_cuda(inputs['crop_pants'])
 
         # imsave(head, osp.join(opt.result, name,"head.jpg"))
         # imsave(pants, osp.join(opt.result, name, "pants.jpg"))
 
-        result = model3(pose,warped,off_cloth,head)
+        result = model3(pose,warped,off_cloth)
 
-        all_mask = target_mask + shape
-        all_mask[all_mask > 0] = 1
-        result = result * all_mask + (1 - all_mask) * 0
-
+        # all_mask = target_mask + shape
+        # all_mask[all_mask > 0] = 1
+        # result = result * all_mask + (1 - all_mask) * 0
+        result = torch.where(head>0, crop_head, result)
         imsave(result, osp.join(opt.result,name,"result.jpg"))
 
 if __name__ == "__main__":

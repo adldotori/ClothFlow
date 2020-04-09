@@ -18,18 +18,18 @@ import time
 
 sys.path.append('..')
 from utils import *
-from Models.UNetS3_pt import *
+from Models.UNetS3 import *
 from Models.LossS3_pt import *
 from dataloader_test import *
 
 PYRAMID_HEIGHT = 5
 
 stage = 'tops'
-in_channels = 3
-checkpoint = 'fullface/checkpoints/checkpoint_4_115000.pth'
+in_channels = 21
+checkpoint = 'fullface/checkpoints/checkpoint_4_11000.pth'
 
-dataroot = '/home/fashionteam/final_test/'
-result_dir = '/home/fashionteam/final_test/'
+dataroot = '/home/fashionteam/body_face/'
+result_dir = '/home/fashionteam/body_face/'
 exp = 'train/'+stage
         
 # def save_images(img_tensors, img_names, save_dir):
@@ -57,8 +57,8 @@ def get_opt():
     parser.add_argument("--stage", default = stage)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
-    parser.add_argument("--radius", type=int, default = 3)
-    parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
@@ -103,10 +103,11 @@ def test(opt):
         inputs = test_loader.next_batch()
         
         lack = inputs['lack'].cuda()
+        pose = inputs['pose'].cuda()
         name = inputs['name']
         
 
-        result = model(lack)
+        result = model(pose, lack)
 
         WriteImage(writer, "lack", lack, cnt, 1)
         WriteImage(writer, "result", result, cnt, 1)
