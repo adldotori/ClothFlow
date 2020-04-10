@@ -55,7 +55,7 @@ def masksave(result, path, save=True):
 
 def get_opt():  
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="/home/fashionteam/underwear_512")
+    parser.add_argument("--dataroot", default="/home/fashionteam/dataset/body_face_2")
     parser.add_argument("--mode", default = "all") # mode = all | one
     parser.add_argument("--name", default = "raw_0") # valid if mode == one
     parser.add_argument("--version", default = "viton") # version = MVC | vitons

@@ -15,7 +15,6 @@ from tqdm import tqdm
 from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 import time
-
 sys.path.append('..')
 from utils import *
 from Models.UNetS3 import *
@@ -27,16 +26,16 @@ PYRAMID_HEIGHT = 5
 if IS_TOPS:
     stage = 'tops'
     in_channels = 22
-    checkpoint = 'makeneck/checkpoints/checkpoint_2_2.pth'
+    checkpoint = 'makeneck/checkpoints/checkpoint_4_2.pth'
 else:
     stage = 'bottoms'
     in_channels = 9
     checkpoint = 'backup/stage3_bot_512.pth'
 
-dataroot = '/home/fashionteam/all_'
+dataroot = '/home/fashionteam/dataset/body_face_2'
 datalist = 'train_MVC'+stage+'_pair.txt'
 exp = 'train/'+stage
-result_dir = '/home/fashionteam/all_'
+result_dir = '/home/fashionteam/dataset/body_face_2'
 
 def get_opt():
     parser = argparse.ArgumentParser()
@@ -49,8 +48,8 @@ def get_opt():
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
-    parser.add_argument("--radius", type=int, default = 3)
-    parser.add_argument("--grid_size", type=int, default = 5)
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
     parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--result_dir', type=str, default=result_dir, help='save result infos')
@@ -100,15 +99,16 @@ def test(opt):
         parse = inputs['parse'].cuda()
         pose = inputs['pose'].cuda()
         head = inputs['head'].cuda()
+        head_mask = inputs['head_mask'].cuda()
         name = inputs['name']
 
         result = model(pose, parse, nonneck)
 
-        # WriteImage(writer,"GT", answer, cnt)
-        # WriteImage(writer,"warped", warped, cnt)
-        # WriteImage(writer,"con_cloth", con_cloth, cnt)#, dataformats="NCHW")
-        # WriteImage(writer,"off_cloth", off_cloth, cnt)
-        # WriteImage(writer,"Result", result, cnt)
+        WriteImage(writer,"GT", answer, cnt,1)
+        WriteImage(writer,"nonneck", nonneck, cnt,1)
+        WriteImage(writer,"parse", parse, cnt,1)
+        WriteImage(writer,"result", result, cnt,1)
+        WriteImage(writer,"head", head, cnt,1)
 
         loss = rLoss(result,answer)
 
@@ -123,11 +123,11 @@ def test(opt):
         # writer.add_scalar("loss/style", style, cnt)
 
         writer.close()
-
+        result = torch.where(head_mask>0,head,result)
         save_images(result,['image_'],result_dir+'/'+name[0])
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"]= "0,1,2,3"
+    os.environ["CUDA_VISIBLE_DEVICES"]= "0"
 
     opt = get_opt()
     test(opt)

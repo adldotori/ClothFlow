@@ -14,12 +14,12 @@ def action(dir, first):
 	segmentation(dir, first)
 
 # change to the directory that contains file each with image.png inside
-BASE_DIR = "/home/fashionteam/dataset/body_face_2"
+BASE_DIR = "/home/fashionteam/body_face"
 
 # action(BASE_DIR,True)
 
 data_path = BASE_DIR 
-data_list = [i for i in os.listdir(data_path) if i[0] != 'c']
+data_list = os.listdir(data_path)
 data_list.sort()
 first = True
 
@@ -32,12 +32,4 @@ first = True
 # cv2.imwrite('segment.png',seg[1])
 # print(' [*] SAVED')
 
-for elem in data_list:
-	print(elem)
-	dir = os.path.join(data_path, elem)
-	print(dir)
-	pose(dir)
-	first = False
-	print("{} DONE".format(elem))
-
-# segmentation(BASE_DIR, first)
+segmentation(BASE_DIR, first)

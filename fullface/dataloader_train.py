@@ -46,7 +46,7 @@ class CFDataset(data.Dataset):
         
         # load data list
         #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_train_fullface.pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_ful1face.pkl"))
 
     def name(self):
         return "CFDataset"
@@ -171,16 +171,21 @@ class CFDataset(data.Dataset):
         remov[remov > 0] = 1
         lack = image * (shape - remov)
         area = torch.mean(face) * INPUT_SIZE[0] * INPUT_SIZE[1]
-        size = (torch.sqrt(area)//(torch.rand(1)*0.3+0.9)).int()
+        size = (torch.sqrt(area)//(torch.rand(1)*0.3+1)).int()
 
         if 0 in pose_data.keys():
             loc_x = pose_data[0][0]+w
             loc_y = pose_data[0][1]+h
             head = image * head + (1 - head) * 0
             tmp = head.clone()
+            pad = 15
             tmp[:,loc_y-size:loc_y+size,loc_x-size:loc_x+size] = 0
             face = head * np.where(tmp==0,1,0)
             face = face.type(torch.FloatTensor)
+            mask = np.zeros((1,INPUT_SIZE[0], INPUT_SIZE[1]))
+            mask[:,loc_y-size-pad:loc_y+size+pad,loc_x-size-pad:loc_x+size+pad] = 1
+            mask[:,loc_y-size:loc_y+size,loc_x-size:loc_x+size] = 0
+            mask = torch.from_numpy(mask)
             lack = lack + face
         else:
             face = image * head + (1 - head) * 0
@@ -190,6 +195,8 @@ class CFDataset(data.Dataset):
             'lack': lack,
             'full': full,
             'face': face,
+            'mask': mask,
+            'pose': pose_map,
             }
         return result
 
