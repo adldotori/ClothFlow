@@ -32,11 +32,25 @@ else:
     in_channels = 9
     checkpoint = 'backup/stage3_bot_512.pth'
 
-dataroot = '/home/fashionteam/dataset/body_face_2'
+dataroot = '/home/fashionteam/dataset/body_face_3'
 datalist = 'train_MVC'+stage+'_pair.txt'
 exp = 'train/'+stage
-result_dir = '/home/fashionteam/dataset/body_face_2'
+result_dir = '/home/fashionteam/dataset/body_face_3'
 
+def conversion(array, dilate, erode):
+    if not 'numpy' in str(type(array)):
+        array = array.cpu().numpy()
+    array = array.squeeze()
+
+    kernel = np.ones((3,3), np.uint8)
+    # array = cv2.morphologyEx(array, cv2.MORPH_CLOSE, kernel)
+    array = cv2.dilate(array, kernel, iterations=dilate)
+    array = cv2.erode(array, kernel, iterations=erode)
+    
+    array = torch.from_numpy(array).cuda()
+    array = array.unsqueeze_(0)
+    # array = array.unsqueeze_(0)
+    return array
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
@@ -71,7 +85,7 @@ def get_opt():
     return opt
 
 def test(opt):
-
+    print(opt.dataroot, opt.result_dir)
     model = UNet(opt, in_channels, 5)
     model = nn.DataParallel(model)
     load_checkpoint(model, opt.checkpoint)
@@ -99,6 +113,7 @@ def test(opt):
         parse = inputs['parse'].cuda()
         pose = inputs['pose'].cuda()
         head = inputs['head'].cuda()
+        ori_head_mask = inputs['ori_head_mask'].cuda()
         head_mask = inputs['head_mask'].cuda()
         name = inputs['name']
 
@@ -123,8 +138,13 @@ def test(opt):
         # writer.add_scalar("loss/style", style, cnt)
 
         writer.close()
-        result = torch.where(head_mask>0,head,result)
-        save_images(result,['image_'],result_dir+'/'+name[0])
+        # result = torch.where(ori_head_mask>0,torch.zeros(1).cuda(),result)
+        # result = torch.where(head_mask>0,head,result)
+        # head_mask = head_mask.unsqueeze_(0)
+        # head_mask[head_mask>0]=1
+        # print(torch.mean(head_mask[head_mask<0]))
+        save_images(head,['head'], opt.result_dir+'/'+name[0])
+        save_images(result,['image_'],opt.result_dir+'/'+name[0])
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= "0"

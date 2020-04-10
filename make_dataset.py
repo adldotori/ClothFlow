@@ -14,7 +14,7 @@ def action(dir, first):
 	segmentation(dir, first)
 
 # change to the directory that contains file each with image.png inside
-BASE_DIR = "/home/fashionteam/dataset/body_face_2"
+BASE_DIR = "/home/fashionteam/dataset/body_face"
 
 # action(BASE_DIR,True)
 

@@ -28,17 +28,17 @@ def load_pkl(name):
 def naming(file_name):
     return file_name[:-6]
 
-def conversion(array, erode, dilate):
+def conversion(array, dilate, erode):
     if not 'numpy' in str(type(array)):
         array = array.cpu().numpy()
     array = array.squeeze()
 
     kernel = np.ones((3,3), np.uint8)
-    array = cv2.erode(array, kernel, iterations=erode)
     array = cv2.dilate(array, kernel, iterations=dilate)
+    array = cv2.erode(array, kernel, iterations=erode)
     
-    array = torch.from_numpy(array)
-    array = array.unsqueeze_(0)
+    # array = torch.from_numpy(array)
+    # array = array.unsqueeze_(0)
     # array = array.unsqueeze_(0)
     return array
 
@@ -79,7 +79,7 @@ class CFDataset(data.Dataset):
         image = self.transform(image)
 
         # parsing and pose path
-        path_seg = osp.join(self.root, name, "segment.png")
+        path_seg = osp.join(self.root, name, "segment_.png")
         path_pose = osp.join(self.root, name, "pose.pkl")
 
         # segment processing
@@ -106,10 +106,14 @@ class CFDataset(data.Dataset):
         parse_array = torch.from_numpy(parse_array)
         parse_array = parse_array.unsqueeze_(0)
 
+        ori_head = head
+        shape -= head
+        head = conversion(head, 3, 4)
+        shape += head
         nonneck = image * shape + (1 - shape) * 0
 
         # head = conversion(head, 4,0)
-        # head = torch.from_numpy(head)
+        head = torch.from_numpy(head)
         crop_head = image * head + (1 - head)
 
         with open(path_pose, 'rb') as f:
@@ -147,6 +151,7 @@ class CFDataset(data.Dataset):
             'parse': parse_array,
             'pose': pose_map,
             'head': crop_head,
+            'ori_head_mask': ori_head,
             'head_mask': head,
             'name': name,
             }
