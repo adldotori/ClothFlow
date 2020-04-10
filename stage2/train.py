@@ -37,10 +37,10 @@ if IS_TOPS:
     nc = 2
     checkpoint = None
     # checkpoint = 'stage2/checkpoints/init/init_cany__0_00050.pth'
-    # checkpoint = 'stage2/checkpoints/tops/checkpoint_tmp_1.pth'
+    checkpoint = 'stage2/checkpoints/tops/checkpoint_4_0.pth'
     init_CN = 'backup/CN_512.pth'
 dataroot = '/home/fashionteam/viton_512'
-dataroot_mask = '/home/fashionteam/ClothFlow/result_viton/warped_mask_last3/'+stage
+dataroot_mask = '/home/fashionteam/ClothFlow/result_viton/warped_mask_last2/'+stage
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = osp.join(PWD,'stage'+NUM_STAGE,'checkpoints',stage)
 runs = osp.join(PWD,'stage'+NUM_STAGE,'runs')
@@ -49,7 +49,7 @@ exp = 'train/'+stage
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=8)
+    parser.add_argument('-b', '--batch_size', type=int, default=12)
 
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", default = dataroot_mask)
@@ -60,7 +60,7 @@ def get_opt():
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
     parser.add_argument("--radius", type=int, default = 5)
     parser.add_argument("--grid_size", type=int, default = 10)
-    parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
+    parser.add_argument('--lr', type=float, default=0.00003, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default=checkpoint_dir, help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
@@ -75,7 +75,7 @@ def get_opt():
     parser.add_argument("--perc_loss", type=float, default=1)
     parser.add_argument("--struct_loss", type=float, default=10)
     parser.add_argument("--stat_loss", type=float, default=-1)
-    parser.add_argument("--abs_loss", type=float, default=-1)
+    parser.add_argument("--abs_loss", type=float, default=0)
     parser.add_argument("--save_dir", type=str, default="npz")
 
     opt = parser.parse_args()
@@ -204,7 +204,9 @@ def train(opt):
                 writer.close()
 
             if (step+1) % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_tmp2_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, 'checkpoint_5_%d.pth' % (cnt%3)))
+
+            save_images(warp_cloth, name, opt.result_dir)
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'

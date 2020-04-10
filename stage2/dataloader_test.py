@@ -39,7 +39,7 @@ class CFDataset(data.Dataset):
         self.warped_mask_path = opt.dataroot_mask
         
         # load data list
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_train_pose.pkl"))
         # self.image_files = os.listdir(osp.join(self.root, 'train/image'))
 
     def name(self):
@@ -47,7 +47,6 @@ class CFDataset(data.Dataset):
 
     def __getitem__(self, index):
         name = self.image_files[index]
-
         # cloth image & cloth mask
 
         path_cloth = osp.join(self.data_path,"cloth",name+"_1.jpg")
@@ -99,8 +98,6 @@ class CFDataset(data.Dataset):
         cloth = cloth.unsqueeze_(0)
         warped_mask = warped_mask.unsqueeze_(0)
 
-        # cloth = warped_mask
-
         tar_cloth = image * cloth + (1 - cloth)
         cloth_ = cloth_ * c_mask + (1 - c_mask)
 
@@ -135,7 +132,7 @@ class CFDataset(data.Dataset):
             'image': image,  # source image
             'pose': pose_map,#pose map
             'name' : name,
-            'crop_cloth_mask': cloth,
+            'crop_cloth_mask': warped_mask,
             'tar_body_mask': shape,
             'tar_cloth': tar_cloth
             }

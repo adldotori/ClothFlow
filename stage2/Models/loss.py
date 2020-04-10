@@ -264,7 +264,7 @@ class FlowLoss(nn.Module):
         else:
             _loss_abs = absFlow(F[0])
 
-        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt, self.lambda_smt * _loss_smt_canny,_loss_stat,_loss_abs
+        return self.lambda_roi * _loss_roi_perc + self.lambda_struct * _loss_struct + self.lambda_smt * _loss_smt + self.lambda_stat * _loss_stat, _loss_roi_perc * self.lambda_roi, _loss_struct * self.lambda_struct, _loss_smt * self.lambda_smt,0, _loss_stat,_loss_abs
         #  + self.lambda_abs * _loss_abs - self.lambda_smt * _loss_smt_canny + _loss_canny
 
     def loss_struct(self, src, tar,version="MS"):

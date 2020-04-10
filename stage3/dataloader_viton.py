@@ -48,7 +48,7 @@ class CFDataset(data.Dataset):
         
         # load data list
         #self.image_files = os.listdir(osp.join(self.data_path,"image"))
-        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_"+self.datamode+".pkl"))
+        self.image_files = load_pkl(osp.join("/home/fashionteam/ClothFlow/","viton_real_train_pose.pkl"))
 
     def name(self):
         return "CFDataset"
@@ -64,16 +64,16 @@ class CFDataset(data.Dataset):
         cloth_mask = Image.open(path_mask)
 
         path_image = osp.join(self.data_path, "image",name+"_0.jpg") # condition image path
-        path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
-        image_mask = Image.open(path_image_mask)
-        image_mask = (np.array(image_mask) > 0).astype(np.float32)
+        # path_image_mask = osp.join(self.data_path, "image-mask",name+"_0.png") # condition image path
+        # image_mask = Image.open(path_image_mask)
+        # image_mask = (np.array(image_mask) > 0).astype(np.float32)
 
-        kernel = np.ones((3,3), np.uint8)
-        image_mask = cv2.erode(image_mask, kernel, iterations=4)
-        image_mask = cv2.dilate(image_mask, kernel, iterations=2)
+        # kernel = np.ones((3,3), np.uint8)
+        # image_mask = cv2.erode(image_mask, kernel, iterations=4)
+        # image_mask = cv2.dilate(image_mask, kernel, iterations=2)
 
-        image_mask = torch.from_numpy(image_mask)
-        image_mask = image_mask.unsqueeze_(0)
+        # image_mask = torch.from_numpy(image_mask)
+        # image_mask = image_mask.unsqueeze_(0)
 
         image = Image.open(path_image)
         warped = Image.open(osp.join(self.warped_cloth_path,name+".jpg"))
@@ -120,6 +120,8 @@ class CFDataset(data.Dataset):
         pants = (parse_array == 9).astype(np.float32) + \
                   (parse_array == 12).astype(np.float32)
 
+        neck = (parse_array == 10).astype(np.float32)
+
         shape = torch.from_numpy(shape)
         cloth = torch.from_numpy(cloth)
         warped_mask = torch.from_numpy(warped_mask)
@@ -135,7 +137,6 @@ class CFDataset(data.Dataset):
         # rgb_array = np.full((3,INPUT_SIZE[0],INPUT_SIZE[1]), np.random.rand(3))
         # rgb_array = rgb_array.astype(np.float32)
         # rand = torch.from_numpy(rgb_array)
-        image_gt = image * image_mask + (1 - image_mask) * 0
         image = image * shape + (1 - shape) * 0
 
         remain = head + pants
@@ -144,11 +145,15 @@ class CFDataset(data.Dataset):
         crop_cloth = image * cloth + (1 - cloth)
         arms_mask = torch.where(cloth>0, torch.zeros(1), arms)
         image_arms = image * arms + (1 - arms) * 0
-        off_cloth = image * remain + (1 - remain) * 0 + image_arms + cloth
+        off_cloth = image * remain + (1 - remain) * 0 #+ image_arms + cloth
         crop_arms = image * arms + (1-arms)
         crop_pants = (image * pants + (1-pants))
         cloth.unsqueeze_(0)
         head.unsqueeze_(0)
+        shape = shape.unsqueeze_(0)
+
+        tar_mask = head + pants + neck + warped_mask + arms
+        tar_mask[tar_mask>0] = 1
 
         point_num = 18
         pose_map = torch.zeros(point_num, H, W)
@@ -173,9 +178,9 @@ class CFDataset(data.Dataset):
         result = {
             'cloth': cloth_,# original cloth
             'cloth_mask': cloth_mask,# original cloth mask
-            'image': image_gt,  # source image
+            'image': image,  # source image
             'pose': pose_map,#pose map
-            'tar_mask': image_mask,
+            'tar_mask': tar_mask,
             'crop_cloth': crop_cloth,#cropped cloth
             'crop_cloth_mask' : warped_mask,#cropped cloth mask
             'name' : name,

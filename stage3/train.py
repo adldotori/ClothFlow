@@ -32,14 +32,14 @@ if IS_TOPS:
     stage = 'tops'
     in_channels = 24
     checkpoint = None
-    # checkpoint = 'stage3/checkpoints/train/tops/checkpoint_nec_2.pth'
+    # checkpoint = 'stage3/checkpoints/train/tops/checkpoint_real_fin_2.pth'÷
 else:
     stage = 'bottomqs'
     in_channels = 9
 dataroot = '/home/fashionteam/viton_512'
-dataroot_mask = osp.join(PWD,"result_viton/warped_mask_last3",stage)
-dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth_3",stage)
-init_CN = 'stage2/checkpoints/CN/train/tops/Epoch:14_00466.pth'
+dataroot_mask = osp.join(PWD,"result_viton/warped_mask_last2",stage)
+dataroot_cloth = osp.join(PWD,"result_viton/warped_cloth_real",stage)
+init_CN = 'backup/CN_512.pth'
 datalist = 'train_MVC'+stage+'_pair.txt'
 checkpoint_dir = '/home/fashionteam/ClothFlow/stage3/checkpoints/'+stage
 
@@ -50,7 +50,7 @@ def get_opt():
     parser.add_argument("--name", default = "TryOn")
     parser.add_argument("--gpu_ids", default = "0")
     parser.add_argument('-j', '--workers', type=int, default=1)
-    parser.add_argument('-b', '--batch_size', type=int, default=8)
+    parser.add_argument('-b', '--batch_size', type=int, default=12)
     
     parser.add_argument("--dataroot", default = dataroot)
     parser.add_argument("--dataroot_mask", type=str, default=dataroot_mask)
@@ -60,9 +60,9 @@ def get_opt():
     parser.add_argument("--data_list", default = datalist)
     parser.add_argument("--fine_width", type=int, default = INPUT_SIZE[0])
     parser.add_argument("--fine_height", type=int, default = INPUT_SIZE[1])
-    parser.add_argument("--radius", type=int, default = 3)
-    parser.add_argument("--grid_size", type=int, default = 5)
-    parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate for adam')
+    parser.add_argument("--radius", type=int, default = 5)
+    parser.add_argument("--grid_size", type=int, default = 10)
+    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default='/home/fashionteam/ClothFlow/stage3/checkpoints', help='save checkpoint infos')
     parser.add_argument('--result_dir', type=str, default='result', help='save result infos')
@@ -74,7 +74,7 @@ def get_opt():
     
     parser.add_argument("--smt_loss", type=float, default=2)
     parser.add_argument("--perc_loss", type=float, default=1)
-    parser.add_argument("--struct_loss", type=float, default=1.7*10)
+    parser.add_argument("--struct_loss", type=float, default=10)
     parser.add_argument("--stat_loss", type=float, default=0)
     parser.add_argument("--abs_loss", type=float, default=0)
     parser.add_argument("--naming", type=str, default="default")
@@ -123,9 +123,9 @@ def train(opt):
             head_mask = inputs['head_mask'].cuda()
 
             result = model(pose, warped, off_cloth)
-            all_mask = tar_mask + tar_cloth_mask
-            all_mask[all_mask>0] = 1
-            result = result * all_mask + (1 - all_mask) * 0
+            # all_mask = tar_mask + tar_cloth_mask
+            # all_mask[all_mask>0] = 1
+            # result = result * all_mask + (1 - all_mask) * 0
             WriteImage(writer,"GT", answer, cnt)
             #WriteImage(writer,"shape", shape, cnt)
             WriteImage(writer,"warped", warped, cnt)
@@ -144,11 +144,11 @@ def train(opt):
             writer.add_scalar("loss/loss", loss, cnt)
             writer.add_scalar("loss/percept", percept, cnt)
             writer.add_scalar("loss/style", style, cnt)
-
+    
             writer.close()
 
             if cnt % opt.save_count == 0:
-                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_real_fin_%d.pth' % (cnt%3)))
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.exp, 'checkpoint_1_%d.pth' % (cnt%3)))
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]= '0,1,2,3'
