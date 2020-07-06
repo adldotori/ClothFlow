@@ -109,7 +109,7 @@ python stage2/test.py
 ```
 -> result/warped_cloth & test/warped_cloth
 `Result`
-![image](etc/stage1_result.png)
+![image](etc/stage2_result.png)
 # Stage 3
 **wear cloth**
 
@@ -121,7 +121,7 @@ We need `warped_mask`, `warped_cloth` folders.
 python stage3/train.py
 ```
 `Result`
-![image](etc/stage1_result.png)
+![image](etc/stage3_result.png)
 * ## Final Result
 ```python 
 python stage3/test.py
