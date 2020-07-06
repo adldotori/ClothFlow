@@ -1,4 +1,14 @@
-Implementation Clothflow (Here is a paper's [link](http://openaccess.thecvf.com/content_ICCV_2019/papers/Han_ClothFlow_A_Flow-Based_Model_for_Clothed_Person_Generation_ICCV_2019_paper.pdf).)
+### Implementation Clothflow (Here is a paper's [link](http://openaccess.thecvf.com/content_ICCV_2019/papers/Han_ClothFlow_A_Flow-Based_Model_for_Clothed_Person_Generation_ICCV_2019_paper.pdf).)
+
+# Result
+![image](etc/final.png)
+
+## What we did
+* head swap
+* change cloth
+* generate neck & arms considering skin color.
+
+(If you want to show more detail, go to etc folder.)
 # Stage 0
 We used a MVC dataset. Please download this first.
 * ## Resize
@@ -69,6 +79,7 @@ It is in `utils.py`.
 
 # Stage 1
 **Change condition cloth mask to target cloth mask**
+
 ![title](etc/stage1.png)
 
 * ## Train
@@ -80,8 +91,12 @@ python stage1/train.py
 python stage1/test.py
 ```
 -> result/warped_mask & test/warped_mask
+
+`Result`
+![image](etc/stage1_result.png)
 # Stage 2
 **Warp**
+
 ![title](etc/stage2.png)
 * ## Train
 We need a `warped_mask` folder.
@@ -93,14 +108,20 @@ python stage2/train.py
 python stage2/test.py
 ```
 -> result/warped_cloth & test/warped_cloth
+`Result`
+![image](etc/stage1_result.png)
 # Stage 3
 **wear cloth**
+
 ![title](etc/stage3.png)
+
 * ## Train
 We need `warped_mask`, `warped_cloth` folders.
 ```python
 python stage3/train.py
 ```
+`Result`
+![image](etc/stage1_result.png)
 * ## Final Result
 ```python 
 python stage3/test.py
